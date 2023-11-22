@@ -1,7 +1,7 @@
 from multiprocessing import Pool
 import subprocess
 import pandas as pd
-from utils import console,flat
+from flagcsnap.utils import console,flat,desaturate
 import os 
 from io import StringIO
 import numpy as np
@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import math
 import matplotlib
 import random
-from utils import desaturate
 
 
 class Arranger:

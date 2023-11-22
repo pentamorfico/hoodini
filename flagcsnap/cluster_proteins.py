@@ -1,7 +1,7 @@
 from multiprocessing import Pool
 import subprocess
 import pandas as pd
-from utils import console,merge_cluster_result
+from flagcsnap.utils import console,merge_cluster_result
 import os 
 from io import StringIO
 

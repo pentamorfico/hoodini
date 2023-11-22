@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flagcsnap"
+version = "1.0.0"
+
+[tool.setuptools.packages.find]
+exclude = ["dbs"]
+
+[project.scripts]
+flagscnap = "flagcsnap.__main__:main"

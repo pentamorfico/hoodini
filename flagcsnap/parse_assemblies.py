@@ -1,8 +1,7 @@
 from multiprocessing import Pool
 import subprocess
-from utils import extract_neighborhood
 import pandas as pd
-from utils import console
+from flagcsnap.utils import console,extract_neighborhood
 
 class AssemblyParser:
     def __init__(self, obj):

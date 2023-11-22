@@ -9,11 +9,10 @@ from rich.progress import Progress
 from rich.console import Console
 from rich.prompt import Prompt
 
-from utils import console,log
+from flagcsnap.utils import console,log,download_assembly_summary
 import shutil
 import pandas as pd
 
-from download_databases import download_assembly_summary
 
 
 class Controller:

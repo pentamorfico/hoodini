@@ -1,16 +1,14 @@
 from multiprocessing import Pool
 import subprocess
 import pandas as pd
-from utils import console,flat
 import os 
 from io import StringIO
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 import random
-from utils import desaturate,darken,to_fasta
+from flagcsnap.utils import desaturate,darken,to_fasta,extract_subsequence, console, flat
 import concurrent.futures
-from utils import extract_subsequence
 from Bio import SeqIO
 from ast import literal_eval
 

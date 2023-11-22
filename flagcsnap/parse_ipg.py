@@ -1,10 +1,9 @@
-from utils import IPGXMLFile,create_ncbi_links, download_files, choose_candidates
+from flagcsnap.utils import IPGXMLFile,create_ncbi_links, download_files, choose_candidates, console
 import pandas as pd 
 import os
 import subprocess
 from multiprocessing import Pool
 import concurrent.futures
-from utils import console
 
 class IPGParser:
     def __init__(self, obj):
