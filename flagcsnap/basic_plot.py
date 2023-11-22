@@ -20,7 +20,7 @@ class Plotter:
         lambda x: [255, 255, 255, 0] if pd.isnull(x) else [255, 228, 184, 255])    
         data=results.to_json(orient="records")
         dend_data=den_data.to_json(orient="records")
-        dend=self.dendrogram.to_json(orient="records")
+        dend=dendrogram.to_json(orient="records")
 
 
         first_part=""" 

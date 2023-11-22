@@ -311,4 +311,6 @@ class ExtraAnnotation:
                 colors_hex = [matplotlib.colors.to_hex(color) for color in colors_rgb]
                 colors_dic = {num:desaturate([n for n in color],0.6,1) for num,color in zip(families,colors_rgb)}
                 results_ncfeatures["fillcolor"]=results_ncfeatures["nc_feature"].map(colors_dic).apply(lambda d: d if isinstance(d, list) else [230, 230, 230,255])
-        self.ncfeatures=results_ncfeatures
+        
+        self.results=results
+        self.results_ncfeatures=results_ncfeatures

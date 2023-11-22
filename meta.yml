@@ -10,18 +10,16 @@ dependencies:
   - aria2
   - biopython>=1.81
   - cctyper>=1.8.0
-  - dendropy>=4.5.2
-  - diamond>=2.1.6
-  - ete3>=3.1.3
-  - famsa>=2.2.2
-  - fasttree>=2.1.11
+  - dendropy>=4
+  - diamond>=2
+  - ete3>=3
+  - famsa>=2
+  - fasttree>=2
   - infernal>=1.1.4
   - ncbi-datasets-cli>=15.0.0
   - padloc>=1.1.0
   - pandas>=2.0
-  - pydeck>=0.8.0
-  - requests>=2.31.0
-  - seqkit>=2.5.0
+  - requests
   - taxonkit>=0.14.2
   - numpy>=1.2
   - pyarrow>=12.0

@@ -147,7 +147,7 @@ def chunked_iterable(iterable, size):
         yield chunk
 
 def download_file(url, index, folder):
-    response = requests.get(url)
+    response = requests.get(url,timeout=25)
     filename = f"{folder}/{index}.txt"  # Assign a value based on the index
     with open(filename, "wb") as file:
         file.write(response.content)

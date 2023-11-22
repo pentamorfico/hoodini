@@ -1,4 +1,4 @@
-cp dbs/cm_models/all.cm $CONDA_PREFIX/db/fastgcsnap
+cp dbs/all.cm $CONDA_PREFIX/db/fastgcsnap
 cp dbs/type_strains_curated.txt $CONDA_PREFIX/db/
 padloc --db-update
 macsydata install -U -u --org mdmparis defense-finder-models
@@ -6,6 +6,7 @@ git clone https://github.com/pentamorfico/CRISPRCasTyper.git
 cd CRISPRCasTyper
 git checkout develop
 pip install .
+rm -r CRISPRCasTyper
 cd $CONDA_PREFIX/db/
 mkdir -p taxonkit cm_models
 cp all.cm cm_models/all.cm
