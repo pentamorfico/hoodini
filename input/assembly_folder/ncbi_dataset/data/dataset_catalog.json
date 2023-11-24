@@ -1,0 +1,191 @@
+{
+"apiVersion": "V2",
+"assemblies": [
+{
+  "files": [
+    {
+      "filePath": "assembly_data_report.jsonl",
+      "fileType": "DATA_REPORT"
+    }
+  ]
+},{
+  "accession": "GCA_003346795.1",
+  "files": [
+    {
+      "filePath": "GCA_003346795.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCA_003346795.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+},{
+  "accession": "GCA_030530255.1",
+  "files": [
+    {
+      "filePath": "GCA_030530255.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCA_030530255.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+},{
+  "accession": "GCF_001293735.1",
+  "files": [
+    {
+      "filePath": "GCF_001293735.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCF_001293735.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+},{
+  "accession": "GCF_001368755.1",
+  "files": [
+    {
+      "filePath": "GCF_001368755.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCF_001368755.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+},{
+  "accession": "GCF_001434255.1",
+  "files": [
+    {
+      "filePath": "GCF_001434255.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCF_001434255.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+},{
+  "accession": "GCF_001437055.1",
+  "files": [
+    {
+      "filePath": "GCF_001437055.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCF_001437055.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+},{
+  "accession": "GCF_002242615.1",
+  "files": [
+    {
+      "filePath": "GCF_002242615.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCF_002242615.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+},{
+  "accession": "GCF_002899655.1",
+  "files": [
+    {
+      "filePath": "GCF_002899655.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCF_002899655.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+},{
+  "accession": "GCF_014830205.1",
+  "files": [
+    {
+      "filePath": "GCF_014830205.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCF_014830205.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+},{
+  "accession": "GCF_016617695.1",
+  "files": [
+    {
+      "filePath": "GCF_016617695.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCF_016617695.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+},{
+  "accession": "GCF_016697045.1",
+  "files": [
+    {
+      "filePath": "GCF_016697045.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCF_016697045.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+},{
+  "accession": "GCF_018884205.1",
+  "files": [
+    {
+      "filePath": "GCF_018884205.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCF_018884205.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+},{
+  "accession": "GCF_022482305.1",
+  "files": [
+    {
+      "filePath": "GCF_022482305.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCF_022482305.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+},{
+  "accession": "GCF_901971775.1",
+  "files": [
+    {
+      "filePath": "GCF_901971775.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCF_901971775.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+},{
+  "accession": "GCF_947381665.1",
+  "files": [
+    {
+      "filePath": "GCF_947381665.1/protein.faa",
+      "fileType": "PROTEIN_FASTA"
+    },
+    {
+      "filePath": "GCF_947381665.1/genomic.gff",
+      "fileType": "GFF3"
+    }
+  ]
+}]}

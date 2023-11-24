@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"  ?>
+<IPGReportSet xmlns:xsi="https://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://www.ncbi.nlm.nih.gov/data_specs/schema/other/seq_report/IPGReportSet.xsd">
+
+<IPGReport  ipg="181048711" product_acc="WP_261792749.1">
+<Product  accver="WP_261792749.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1613" slen="1378" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="WP_261792749.1" source="RefSeq" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="NZ_OKQY01000039.1" start="11127" stop="15263" strand="+" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" strain="CECT 9269" assembly="GCF_900290185.1"/>
+<CDS  accver="NZ_POTQ01000013.1" start="11499" stop="15635" strand="+" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" strain="CRL1446" assembly="GCF_002899655.1"/></CDSList></Protein>
+<Protein  accver="SPE16733.1" source="INSDC" name="CRISPR-associated endonuclease Cas9 2" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" priority="60">
+<CDSList>
+<CDS  accver="OKQY01000039.1" start="11127" stop="15263" strand="+" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" strain="CECT 9269" assembly="GCA_900290185.1"/></CDSList></Protein></ProteinList>
+<Statistics  prot_count="2" nuc_count="3" assmb_count="3"/></IPGReport>
+<IPGReport  ipg="675135537" product_acc="MDO4855339.1">
+<Product  accver="MDO4855339.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1450649" slen="1380" org="Limosilactobacillus gorillae" kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="MDO4855339.1" source="INSDC" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1450649" org="Limosilactobacillus gorillae" kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="JAUMVI010000006.1" start="52718" stop="56860" strand="+" taxid="1450649" org="Limosilactobacillus gorillae" kingdom_taxid="2" kingdom="Bacteria" assembly="GCA_030530255.1"/></CDSList></Protein></ProteinList>
+<Statistics  prot_count="1" nuc_count="1" assmb_count="1"/></IPGReport>
+<IPGReport  ipg="521643769" product_acc="WP_236945423.1">
+<Product  accver="WP_236945423.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1613" slen="1191" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="WP_236945423.1" source="RefSeq" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="NZ_CP016803.1" start="273713" stop="277288" strand="-" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" strain="SK152" assembly="GCF_002242615.1"/></CDSList></Protein></ProteinList>
+<Statistics  prot_count="1" nuc_count="1" assmb_count="1"/></IPGReport>
+<IPGReport  ipg="198249931" product_acc="AXH06898.1">
+<Product  accver="AXH06898.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1613" slen="1378" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="AXH06898.1" source="INSDC" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="CP031195.1" start="339567" stop="343703" strand="+" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" strain="LDTM 7301" assembly="GCA_003346795.1"/></CDSList></Protein></ProteinList>
+<Statistics  prot_count="1" nuc_count="1" assmb_count="1"/></IPGReport>
+<IPGReport  ipg="562258550" product_acc="WP_253196413.1">
+<Product  accver="WP_253196413.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1613" slen="1378" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="WP_253196413.1" source="RefSeq" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="NZ_CP065522.1" start="1246416" stop="1250552" strand="-" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" strain="YLF016" assembly="GCF_018884205.1"/></CDSList></Protein></ProteinList>
+<Statistics  prot_count="1" nuc_count="1" assmb_count="1"/></IPGReport>
+<IPGReport  ipg="516480402" product_acc="WP_234446804.1">
+<Product  accver="WP_234446804.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1613" slen="1143" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="WP_234446804.1" source="RefSeq" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="NZ_CP067088.1" start="840813" stop="844244" strand="+" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" strain="B44" assembly="GCF_016617695.1"/></CDSList></Protein></ProteinList>
+<Statistics  prot_count="1" nuc_count="1" assmb_count="1"/></IPGReport>
+<IPGReport  ipg="310408674" product_acc="WP_167336629.1">
+<Product  accver="WP_167336629.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1450649" slen="1369" org="Limosilactobacillus gorillae" kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="WP_167336629.1" source="RefSeq" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1450649" org="Limosilactobacillus gorillae" kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="NZ_BCAH01000022.1" start="14750" stop="18859" strand="-" taxid="1450649" org="Limosilactobacillus gorillae" kingdom_taxid="2" kingdom="Bacteria" strain="KZ01(T)=JCM19575(T)=DSM28356(T)" assembly="GCF_001293735.1"/></CDSList></Protein></ProteinList>
+<Statistics  prot_count="1" nuc_count="1" assmb_count="1"/></IPGReport>
+<IPGReport  ipg="143080955" product_acc="WP_081011477.1">
+<Product  accver="WP_081011477.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1613" slen="842" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="WP_081011477.1" source="RefSeq" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="NZ_CBZV010000050.1" start="1673" stop="4203" strand="-" taxid="1613" org="Limosilactobacillus fermentum" kingdom_taxid="2" kingdom="Bacteria" strain="222" assembly="GCF_001368755.1"/></CDSList></Protein></ProteinList>
+<Statistics  prot_count="1" nuc_count="1" assmb_count="1"/></IPGReport>
+<IPGReport  ipg="257269821" product_acc="WP_185910605.1">
+<Product  accver="WP_185910605.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="97478" slen="1395" org="Limosilactobacillus mucosae" kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="WP_185910605.1" source="RefSeq" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="97478" org="Limosilactobacillus mucosae" kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="NZ_CABFNH010000025.1" start="19577" stop="23764" strand="+" taxid="97478" org="Limosilactobacillus mucosae" kingdom_taxid="2" kingdom="Bacteria" strain="INIA P508" assembly="GCF_901971775.1"/></CDSList></Protein>
+<Protein  accver="VTZ91849.1" source="INSDC" name="CRISPR-associated endonuclease Cas9" taxid="97478" org="Limosilactobacillus mucosae" kingdom_taxid="2" kingdom="Bacteria" priority="60">
+<CDSList>
+<CDS  accver="CABFNH010000025.1" start="19577" stop="23764" strand="+" taxid="97478" org="Limosilactobacillus mucosae" kingdom_taxid="2" kingdom="Bacteria" strain="INIA P508" assembly="GCA_901971775.1"/></CDSList></Protein></ProteinList>
+<Statistics  prot_count="2" nuc_count="2" assmb_count="2"/></IPGReport>
+<IPGReport  ipg="113622012" product_acc="WP_065533057.1">
+<Product  accver="WP_065533057.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1598" slen="1382" org="Limosilactobacillus reuteri" kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="WP_065533057.1" source="RefSeq" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1598" org="Limosilactobacillus reuteri" kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="NZ_CP015408.2" start="816565" stop="820713" strand="-" taxid="1598" org="Limosilactobacillus reuteri" kingdom_taxid="2" kingdom="Bacteria" strain="I49" assembly="GCF_001688685.2"/>
+<CDS  accver="NZ_CP065318.1" start="1880486" stop="1884634" strand="+" taxid="1598" org="Limosilactobacillus reuteri" kingdom_taxid="2" kingdom="Bacteria" strain="I49" assembly="GCF_016697045.1"/>
+<CDS  accver="NZ_NHMT01000001.1" start="1993535" stop="1997683" strand="+" taxid="1598" org="Limosilactobacillus reuteri" kingdom_taxid="2" kingdom="Bacteria" strain="I49" assembly="GCF_002221655.1"/></CDSList></Protein>
+<Protein  accver="ANU51483.1" source="INSDC" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1598" org="Limosilactobacillus reuteri" kingdom_taxid="2" kingdom="Bacteria" priority="60">
+<CDSList>
+<CDS  accver="CP015408.2" start="816565" stop="820713" strand="-" taxid="1598" org="Limosilactobacillus reuteri" kingdom_taxid="2" kingdom="Bacteria" strain="I49" assembly="GCA_001688685.2"/></CDSList></Protein>
+<Protein  accver="OXE60789.1" source="INSDC" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1598" org="Limosilactobacillus reuteri" kingdom_taxid="2" kingdom="Bacteria" priority="60">
+<CDSList>
+<CDS  accver="NHMT01000001.1" start="1993535" stop="1997683" strand="+" taxid="1598" org="Limosilactobacillus reuteri" kingdom_taxid="2" kingdom="Bacteria" strain="I49" assembly="GCA_002221655.1"/></CDSList></Protein>
+<Protein  accver="QQR14555.1" source="INSDC" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="1598" org="Limosilactobacillus reuteri" kingdom_taxid="2" kingdom="Bacteria" priority="60">
+<CDSList>
+<CDS  accver="CP065318.1" start="1880486" stop="1884634" strand="+" taxid="1598" org="Limosilactobacillus reuteri" kingdom_taxid="2" kingdom="Bacteria" strain="I49" assembly="GCA_016697045.1"/></CDSList></Protein></ProteinList>
+<Statistics  prot_count="4" nuc_count="6" assmb_count="6"/></IPGReport>
+<IPGReport  ipg="363455838" product_acc="WP_191668167.1">
+<Product  accver="WP_191668167.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="2268022" slen="1376" org="Limosilactobacillus walteri" kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="WP_191668167.1" source="RefSeq" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="2268022" org="Limosilactobacillus walteri" kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="NZ_QORN01000023.1" start="25617" stop="29747" strand="-" taxid="2268022" org="Limosilactobacillus walteri" kingdom_taxid="2" kingdom="Bacteria" strain="M31" assembly="GCF_014830205.1"/></CDSList></Protein>
+<Protein  accver="MBD5806796.1" source="INSDC" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="2268022" org="Limosilactobacillus walteri" kingdom_taxid="2" kingdom="Bacteria" priority="60">
+<CDSList>
+<CDS  accver="QORN01000023.1" start="25617" stop="29747" strand="-" taxid="2268022" org="Limosilactobacillus walteri" kingdom_taxid="2" kingdom="Bacteria" strain="M31" assembly="GCA_014830205.1"/></CDSList></Protein></ProteinList>
+<Statistics  prot_count="2" nuc_count="2" assmb_count="2"/></IPGReport>
+<IPGReport  ipg="529556129" product_acc="WP_291977926.1">
+<Product  accver="WP_291977926.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="2773925" slen="1372" org="Limosilactobacillus sp." kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="WP_291977926.1" source="RefSeq" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="2773925" org="Limosilactobacillus sp." kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="NZ_JAKVPE010000001.1" start="515241" stop="519359" strand="-" taxid="2773925" org="Limosilactobacillus sp." kingdom_taxid="2" kingdom="Bacteria" assembly="GCF_022482365.1"/>
+<CDS  accver="NZ_JAKVPL010000001.1" start="1900499" stop="1904617" strand="-" taxid="2773925" org="Limosilactobacillus sp." kingdom_taxid="2" kingdom="Bacteria" assembly="GCF_022482305.1"/></CDSList></Protein>
+<Protein  accver="MCH3922897.1" source="INSDC" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="2773925" org="Limosilactobacillus sp." kingdom_taxid="2" kingdom="Bacteria" priority="60">
+<CDSList>
+<CDS  accver="JAKVPL010000001.1" start="1900499" stop="1904617" strand="-" taxid="2773925" org="Limosilactobacillus sp." kingdom_taxid="2" kingdom="Bacteria" assembly="GCA_022482305.1"/></CDSList></Protein>
+<Protein  accver="MCH3927580.1" source="INSDC" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="2773925" org="Limosilactobacillus sp." kingdom_taxid="2" kingdom="Bacteria" priority="60">
+<CDSList>
+<CDS  accver="JAKVPE010000001.1" start="515241" stop="519359" strand="-" taxid="2773925" org="Limosilactobacillus sp." kingdom_taxid="2" kingdom="Bacteria" assembly="GCA_022482365.1"/></CDSList></Protein></ProteinList>
+<Statistics  prot_count="3" nuc_count="4" assmb_count="4"/></IPGReport>
+<IPGReport  ipg="97430910" product_acc="WP_057866106.1">
+<Product  accver="WP_057866106.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="179838" slen="1363" org="Lentilactobacillus diolivorans" kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="WP_057866106.1" source="RefSeq" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="179838" org="Lentilactobacillus diolivorans" kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="NZ_AZEY01000105.1" start="131108" stop="135199" strand="+" taxid="1423739" org="Lentilactobacillus diolivorans DSM 14421" kingdom_taxid="2" kingdom="Bacteria" strain="DSM 14421" assembly="GCF_001434255.1"/>
+<CDS  accver="NZ_BKAB01000022.1" start="36248" stop="40339" strand="+" taxid="179838" org="Lentilactobacillus diolivorans" kingdom_taxid="2" kingdom="Bacteria" strain="NBRC 107869" assembly="GCF_007992335.1"/></CDSList></Protein>
+<Protein  accver="GEP23984.1" source="INSDC" name="CRISPR-associated endonuclease Cas9" taxid="179838" org="Lentilactobacillus diolivorans" kingdom_taxid="2" kingdom="Bacteria" priority="60">
+<CDSList>
+<CDS  accver="BKAB01000022.1" start="36248" stop="40339" strand="+" taxid="179838" org="Lentilactobacillus diolivorans" kingdom_taxid="2" kingdom="Bacteria" strain="NBRC 107869" assembly="GCA_007992335.1"/></CDSList></Protein>
+<Protein  accver="KRL62937.1" source="INSDC" name="CRISPR-associated protein, Csn1 family" taxid="1423739" org="Lentilactobacillus diolivorans DSM 14421" kingdom_taxid="2" kingdom="Bacteria" priority="60">
+<CDSList>
+<CDS  accver="AZEY01000105.1" start="131108" stop="135199" strand="+" taxid="1423739" org="Lentilactobacillus diolivorans DSM 14421" kingdom_taxid="2" kingdom="Bacteria" strain="DSM 14421" assembly="GCA_001434255.1"/></CDSList></Protein>
+<Protein  accver="QHY08198.1" source="PAT" name="Sequence 213 from patent US 10450584" taxid="0" org="Unknown" kingdom_taxid="0" kingdom="Unknown" priority="80"/></ProteinList>
+<Statistics  prot_count="4" nuc_count="4" assmb_count="4"/></IPGReport>
+<IPGReport  ipg="97540788" product_acc="WP_057741369.1">
+<Product  accver="WP_057741369.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="396268" slen="1365" org="Limosilactobacillus secaliphilus" kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="WP_057741369.1" source="RefSeq" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="396268" org="Limosilactobacillus secaliphilus" kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="NZ_JQBW01000010.1" start="101342" stop="105439" strand="-" taxid="396268" org="Limosilactobacillus secaliphilus" kingdom_taxid="2" kingdom="Bacteria" strain="DSM 17896" assembly="GCF_001437055.1"/></CDSList></Protein>
+<Protein  accver="KRN58191.1" source="INSDC" name="CRISPR-associated protein, Csn1 family" taxid="396268" org="Limosilactobacillus secaliphilus" kingdom_taxid="2" kingdom="Bacteria" priority="60">
+<CDSList>
+<CDS  accver="JQBW01000010.1" start="101342" stop="105439" strand="-" taxid="396268" org="Limosilactobacillus secaliphilus" kingdom_taxid="2" kingdom="Bacteria" strain="DSM 17896" assembly="GCA_001437055.1"/></CDSList></Protein></ProteinList>
+<Statistics  prot_count="2" nuc_count="2" assmb_count="2"/></IPGReport>
+<IPGReport  ipg="656008894" product_acc="WP_283574311.1">
+<Product  accver="WP_283574311.1" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="148604" slen="1375" org="Limosilactobacillus ingluviei" kingdom_taxid="2" kingdom="Bacteria"/>
+<ProteinList>
+<Protein  accver="WP_283574311.1" source="RefSeq" name="type II CRISPR RNA-guided endonuclease Cas9" taxid="148604" org="Limosilactobacillus ingluviei" kingdom_taxid="2" kingdom="Bacteria" priority="0">
+<CDSList>
+<CDS  accver="NZ_CANCVZ010000004.1" start="159660" stop="163787" strand="-" taxid="148604" org="Limosilactobacillus ingluviei" kingdom_taxid="2" kingdom="Bacteria" assembly="GCF_947381665.1"/></CDSList></Protein></ProteinList>
+<Statistics  prot_count="1" nuc_count="1" assmb_count="1"/></IPGReport></IPGReportSet>

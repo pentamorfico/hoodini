@@ -31,7 +31,7 @@ class Arranger:
             else:
                 height = int(len(self.leaf_labels)*height_factor)
 
-            y_step = den_data['y'][1] - den_data['y'][0]
+            y_step = den_data['y'][2] - den_data['y'][1]
             y_half_height = y_step/6
             neg_strand = results['flip_strand']=="-"
             results["dx"] = results["rel_end"]-results["rel_start"]
@@ -68,7 +68,7 @@ class Arranger:
             colors_dic = {num:desaturate([n for n in color],0.4,1) for num,color in zip(families,colors_rgb)}
             results["fillcolor"]=results["fam_cluster"].map(colors_dic).apply(lambda d: d if isinstance(d, list) else [230, 230, 230,255])
             results=results.drop_duplicates(subset=['start','end',"seqid","target_prot"])
-            results[["id","target_prot","seqid","fam_cluster","start","end","rel_start","rel_end","strand","locus_tag","product","locus_tag","assembly_accession","species_taxid","kingdom","phylum","class","order","family","genus","species","sequence"]].drop_duplicates(subset=['start','end',"seqid"]).to_csv(self.output+"/results.txt",index=False,header=False)
+            results[["id","target_prot","seqid","fam_cluster","start","end","rel_start","rel_end","strand","locus_tag","product","assembly_accession","species_taxid","kingdom","phylum","class","order","family","genus","species","sequence"]].drop_duplicates(subset=['start','end',"seqid"]).to_csv(self.output+"/results.txt",index=False,header=False)
             
             self.results=results
             self.den_data=den_data

@@ -10,4 +10,4 @@ version = "1.0.0"
 exclude = ["dbs"]
 
 [project.scripts]
-flagscnap = "flagcsnap.__main__:main"
+flagcsnap = "flagcsnap.__main__:main"

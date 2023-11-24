@@ -112,12 +112,12 @@ def main(**kwargs):
     plotter.run()
 
     console.print("🧬\tRunning extra annotation tools")
-    plotter = ExtraAnnotation(arranger)
-    plotter.run()
+    extra = ExtraAnnotation(arranger)
+    extra.run()
 
     console.print("🖼️\tPlotting extra data")
-    plotter = ExtraPlotter(plotter)
-    plotter.run()
+    extraplotter = ExtraPlotter(extra)
+    extraplotter.run()
 
 if __name__ == '__main__':
     main()

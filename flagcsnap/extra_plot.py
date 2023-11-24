@@ -12,7 +12,6 @@ class ExtraPlotter:
         den_data = self.den_data
         dendrogram = self.dendrogram
         results_ncfeatures = self.results_ncfeatures
-
         results["temp"]= results["assembly_accession"].str.split(".").str[0]
         results=pd.merge(results,self.type_strains[["bacdive_id","strain_number_header","type_strain_assembly"]],left_on="temp",right_on="type_strain_assembly",how="left").drop(columns=["temp","type_strain_assembly"])
         den_data["temp"]= den_data["assembly_accession"].str.split(".").str[0]

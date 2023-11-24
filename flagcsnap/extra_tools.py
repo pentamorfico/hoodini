@@ -34,7 +34,7 @@ class ExtraAnnotation:
 
                     padloc_df = pd.read_csv(self.output+"/padloc/results.fasta_padloc.csv")
                     padloc_df= padloc_df.rename(columns={'system': 'padloc_system',"protein.name":"padloc_gene"})
-                    results=pd.merge(results, padloc_df[["padloc_system","padloc_gene","target.description"]], left_on='id', right_on='target.description',how="left").drop(columns='target.description')
+                    results=pd.merge(results, padloc_df[["padloc_system","padloc_gene","target.name"]], left_on='id', right_on='target.name',how="left").drop(columns='target.name')
                 except:
                     console.print("☹️\tPADLOC failed")
         if self.deffinder:
@@ -42,24 +42,23 @@ class ExtraAnnotation:
                 console.print("🛡️\tRunning DefenseFinder")
 
                 try:   
-                    if not os.path.exists(self.output+"/defense_finder"):
-                        os.makedirs(self.output+"/defense_finder")
                     deffinder_df = results[["locus_tag","sequence"]]
-                    deffinder_df.dropna().drop_duplicates().to_fasta("locus_tag","sequence",self.output+"/defense_finder/proteome.fasta")
-                    command = ["defense-finder", "run", self.output+"/defense_finder/proteome.fasta", "--db-type","gembase","-o",self.output+"/defense_finder"]
+                    deffinder_df.dropna().drop_duplicates().to_fasta("locus_tag","sequence",self.output+"/proteome.fasta")
+                    command = ["defense-finder", "run", self.output+"/proteome.fasta", "--db-type","gembase","-o",self.output+"/defense_finder"]
                     subprocess.run(command, check=True,stdout=subprocess.DEVNULL)
-                    deffinder_df = pd.read_csv(self.output+"/defense_finder/defense_finder_genes.tsv",sep="\t")
+                    deffinder_df = pd.read_csv(self.output+"/defense_finder/proteome_defense_finder_genes.tsv",sep="\t")
                     deffinder_df.rename(columns={'gene_name': 'deffinder_system'})
-                    deffinder_df[['deffinder_system', 'deffinder_gene']] = deffinder_df['gene_name'].str.split('__', expand=True)
+                    deffinder_df[['deffinder_gene', 'deffinder_system']] = deffinder_df['gene_name'].str.split('__', expand=True)
+                    #Split column model_fqn by / and get the last element
+                    deffinder_df['deffinder_system'] = deffinder_df['model_fqn'].str.split('/').str[-1]
                     results=pd.merge(results, deffinder_df[["deffinder_system","deffinder_gene","hit_id"]], left_on='locus_tag', right_on='hit_id',how="left").drop(columns='hit_id')
                 except:
                     print("Defense finder failed")
                     results["deffinder_system"] = np.nan
                     results["deffinder_gene"] = np.nan
 
-
-        with console.status("[bold green]Extracting nucleotide fasta...") as status:
-            if self.ncrna or self.cctyper:
+        if self.ncrna or self.cctyper:
+            with console.status("[bold green]Extracting nucleotide fasta...") as qstatus:
                 if not os.path.exists(self.output+'/neighborhood'):
                     os.makedirs(self.output+'/neighborhood')
                 neighs = None
@@ -289,7 +288,7 @@ class ExtraAnnotation:
         results['linetype'] = np.where(pd.notna(results['defense']), 0.3, 0.2)
 
         results=results.drop_duplicates(subset=['start','end',"seqid","target_prot"])
-        results[["id","target_prot","seqid","fam_cluster","padloc_system","padloc_gene","deffinder_system","deffinder_gene","start","end","rel_start","rel_end","strand","flip_strand","product","locus_tag","assembly_accession","species_taxid","kingdom","phylum","class","order","family","genus","species","linecolor","fillcolor"]].to_csv(self.output+"/results_defense.txt",index=False,header=False)
+        results[["id","target_prot","seqid","fam_cluster","padloc_system","padloc_gene","deffinder_system","deffinder_gene","start","end","rel_start","rel_end","strand","flip_strand","product","locus_tag","assembly_accession","species_taxid","kingdom","phylum","class","order","family","genus","species","linecolor","fillcolor"]].to_csv(self.output+"/results_defense.txt",index=False)
 
         results_ncfeatures =  pd.DataFrame()
         if self.ncrna or self.cctyper:
@@ -310,5 +309,5 @@ class ExtraAnnotation:
                 colors_dic = {num:desaturate([n for n in color],0.6,1) for num,color in zip(families,colors_rgb)}
                 results_ncfeatures["fillcolor"]=results_ncfeatures["nc_feature"].map(colors_dic).apply(lambda d: d if isinstance(d, list) else [230, 230, 230,255])
         
-        self.results=results
         self.results_ncfeatures=results_ncfeatures
+        self.results=results
