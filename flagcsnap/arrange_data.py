@@ -33,10 +33,12 @@ class Arranger:
 
             # Find the step size for the y axis, that would be den_data['y'][n] - den_data['y'][n-1] for the firt n in which the difference is not 0
             ## TODO: see why there are duplicate values
-            for i in range(len(den_data['y'])):
+
+            for i in range(1, len(den_data['y'])):
                 if den_data['y'][i] - den_data['y'][i-1] != 0:
                     y_step = den_data['y'][i] - den_data['y'][i-1]
                     break
+
             y_half_height = y_step/6
             neg_strand = results['flip_strand']=="-"
             results["dx"] = results["rel_end"]-results["rel_start"]
