@@ -18,16 +18,19 @@ class AssemblyParser:
                     formatfile="protein,gff3,genome"
                 else:
                     formatfile="protein,gff3"
-                command = ["datasets","download", "genome", "accession", "--inputfile", self.output+"/assembly_list.txt", 
-                            "--dehydrated", "--filename", self.output+"/dehydrated.zip", "--api-key", self.apikey, 
-                            "--include", formatfile, "--annotated"]
-                subprocess.run(command, check=True)
-                command = ["unzip",self.output+"/dehydrated.zip","-d",self.output+"/assembly_folder"]
-                subprocess.run(command, check=True)
-                command = ["datasets", "rehydrate", "--directory",  self.output+"/assembly_folder", "--api-key", self.apikey, "--max-workers", str(self.max_concurrent_downloads)]
-                subprocess.run(command, check=True)
-                assembly_folder = self.output+"/assembly_folder/ncbi_dataset/data/"
-                self.assembly_folder = assembly_folder
+                try:
+                    command = ["datasets","download", "genome", "accession", "--inputfile", self.output+"/assembly_list.txt", 
+                                "--dehydrated", "--filename", self.output+"/dehydrated.zip", "--api-key", self.apikey, 
+                                "--include", formatfile, "--annotated"]
+                    subprocess.run(command, check=True)
+                    command = ["unzip",self.output+"/dehydrated.zip","-d",self.output+"/assembly_folder"]
+                    subprocess.run(command, check=True)
+                    command = ["datasets", "rehydrate", "--directory",  self.output+"/assembly_folder", "--api-key", self.apikey, "--max-workers", str(self.max_concurrent_downloads)]
+                    subprocess.run(command, check=True)
+                    assembly_folder = self.output+"/assembly_folder/ncbi_dataset/data/"
+                    self.assembly_folder = assembly_folder
+                except:
+                    pass
             else:
                 assembly_folder = self.assembly_folder
 
