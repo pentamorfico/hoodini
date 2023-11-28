@@ -1,4 +1,4 @@
-#conda create -n flagcsnap python aria2 biopython cctyper dendropy diamond ete3 famsa fasttree infernal ncbi-datasets-cli padloc pandas=1.4.3 requests taxonkit numpy pyarrow==12.0.1 matplotlib defense-finder rich rich-click -c conda-forge -c bioconda -c padlocbio -c russel88
+#conda create -n flagcsnap python aria2 biopython cctyper treeswift diamond ete3 famsa fasttree infernal ncbi-datasets-cli padloc pandas=1.4.3 requests taxonkit numpy pyarrow==12.0.1 matplotlib defense-finder rich rich-click -c conda-forge -c bioconda -c padlocbio -c russel88
 #micromamba activate flagcsnap
 
 padloc --db-update
