@@ -1,0 +1,17 @@
+pyproject.toml
+flagcsnap/__main__.py
+flagcsnap/arrange_data.py
+flagcsnap/basic_plot.py
+flagcsnap/cluster_proteins.py
+flagcsnap/extra_plot.py
+flagcsnap/extra_tools.py
+flagcsnap/parse_assemblies.py
+flagcsnap/parse_ipg.py
+flagcsnap/parse_taxonomy.py
+flagcsnap/stream.py
+flagcsnap/utils.py
+flagcsnap.egg-info/PKG-INFO
+flagcsnap.egg-info/SOURCES.txt
+flagcsnap.egg-info/dependency_links.txt
+flagcsnap.egg-info/entry_points.txt
+flagcsnap.egg-info/top_level.txt

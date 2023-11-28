@@ -30,6 +30,7 @@ class AssemblyParser:
                     assembly_folder = self.output+"/assembly_folder/ncbi_dataset/data/"
                     self.assembly_folder = assembly_folder
                 except:
+                    self.assembly_folder = assembly_folder
                     pass
             else:
                 assembly_folder = self.assembly_folder
