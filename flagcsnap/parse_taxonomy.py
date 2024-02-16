@@ -33,6 +33,7 @@ class TaxonomyParser:
             results=pd.merge(results, taxdf, left_on='species_taxid', right_on='taxid_taxonkit',how="left").drop(columns='taxid_taxonkit')
             targets = results["target_prot"].drop_duplicates().tolist()
             results[results["id"].isin(targets)][["id","sequence"]].drop_duplicates().to_fasta("id","sequence",self.output+"/target_prots.fasta")
+            targets = [n.strip(">").strip() for n in open(self.output+"/target_prots.fasta") if n.startswith(">")]
             console.print(f"✔️\tTaxonomy done\n")
 
         with console.status("[bold green]Making trees ...") as status:

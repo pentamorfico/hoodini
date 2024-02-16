@@ -11,6 +11,16 @@ from pandas.core.base import PandasObject
 import glob
 from Bio import SeqIO
 import subprocess
+from networkx.utils.union_find import UnionFind
+import multiprocessing
+import warnings
+warnings.filterwarnings('ignore')
+import pyhmmer
+from functools import partial
+from tqdm import tqdm
+from rich.progress import Progress
+
+
 ## Classes
 
 class IPGXMLFile:
@@ -26,7 +36,7 @@ class IPGXMLFile:
 
     def to_dict(self):
         """
-        Converts the IPG XML element tree into a dictionary.
+        Converts the IPG XML element tree into a dfictionary.
 
         Returns:
         dict: A dictionary representation of the XML data.
@@ -305,7 +315,7 @@ def extract_neighborhood(protein,assembly,mod,wn):
                     indices = subgff.index[subgff["id"] == protein]
                     relend_index = subgff.columns.get_loc("rel_end")
                     relstart_index = subgff.columns.get_loc("rel_start")
-                    delta = subgff.iloc[indices, relend_index].tolist()
+                    delta = subgff.iloc[indices, relend_index].tolist()[0]
                     neg_strand = subgff['strand']=="-"
                     upstream = subgff['rel_start']>0
                     subgff['flip_strand']=np.where(neg_strand, "+", "-")
@@ -324,7 +334,7 @@ def extract_neighborhood(protein,assembly,mod,wn):
 
     else:
         return None
-
+    
 def merge_cluster_result(result_df,cluster_df):
     value_counts = cluster_df['clu_rep_seq'].value_counts()
     cluster_df['clu_size'] = cluster_df['clu_rep_seq'].map(value_counts)
@@ -411,3 +421,29 @@ def darken(color_list, d, alpha):
     new_b = b * (1 - d)
     new_alpha = alpha*255
     return [new_r*255, new_g*255, new_b*255, new_alpha]
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+def interpolate_colors(e_values, min_evalue=0, max_evalue=0.1):
+    """
+    Maps E-values to colors using the plasma color map.
+
+    :param e_values: List of E-values to be converted into colors.
+    :param min_evalue: The minimum E-value.
+    :param max_evalue: The maximum E-value.
+    :return: List of RGBA colors corresponding to the E-values.
+    """
+    # Normalize E-values
+    normalized_e_values = (np.array(e_values) - min_evalue) / (max_evalue - min_evalue)
+    normalized_e_values = np.clip(normalized_e_values, 0, 1)  # Ensure values are within [0, 1]
+
+    # Get the plasma color map
+    plasma = plt.cm.rainbow
+
+    # Map normalized E-values to colors
+    colors = [plasma(value) for value in normalized_e_values]
+    colors = [tuple(int(255 * c) for c in plasma(value)[:4]) for value in normalized_e_values]
+
+
+    return colors

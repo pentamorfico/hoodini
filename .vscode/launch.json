@@ -1,0 +1,21 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "python.venvPath": "/home/marmes/micromamba/envs/flagcsnap/bin/python3",
+            "justMyCode": true,
+            "args": ["--input", "cas9_50.txt","--domains", "/home/marmes/databases/mmseqs/pfam_seed", "--clust-method", "jackhmmer", "--domains-metadata", "~/databases/mmseqs/Pfam-A.clans.tsv", "--min-prevalence", "0.2"],
+            "env": {
+                "CONDA_PREFIX": "/home/marmes/micromamba/envs/flagcsnap"
+            }
+        }
+    ]
+}

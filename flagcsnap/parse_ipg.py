@@ -32,7 +32,7 @@ class IPGParser:
                         else:
                             final_df = ipg_df
                 #Filter out those that are not Bacteria or Viruses (kingdom column)
-                df = final_df[final_df["kingdom"].isin(["Bacteria","Viruses"])]
+                df = final_df[final_df["kingdom"].isin(["Bacteria","Viruses", "Archaea"])]
                 filt_ipg_df = pd.merge(df, self.assembly[["assembly_accession","species_taxid","organism_name","infraspecific_name"]], left_on='assembly',right_on="assembly_accession",how="left")
                 filt_ipg_df["temp"] = filt_ipg_df["assembly_accession"].str.split(".").str[0]
                 filt_ipg_df = pd.merge(filt_ipg_df, self.type_strains, left_on='temp',right_on="type_strain_assembly",how="left").drop(columns=["type_strain_assembly","temp"])

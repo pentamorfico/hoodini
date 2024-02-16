@@ -281,7 +281,6 @@ class ExtraAnnotation:
         results['defense'].replace('', np.nan, inplace=True)
         indexes_df = results['defense'].dropna().index
         indexes_nodf = results['defense'].isna().index
-        results.loc[indexes_nodf, 'linecolor'] = results.loc[indexes_nodf, 'fillcolor'].apply(lambda x: darken(x, 0.5, 1))
         results.loc[indexes_df, 'linecolor'] = results.loc[indexes_df, 'fillcolor'].apply(lambda x: [0, 0, 0,255])
         #results.loc[indexes, 'fillcolor']=results.loc[indexes, 'fillcolor'].apply(lambda d: [0, 0, 0,255])
         results=results.drop_duplicates(subset=["id","target_prot"])

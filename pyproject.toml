@@ -5,9 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "flagcsnap"
 version = "1.0.0"
-
-[tool.setuptools.packages.find]
-exclude = ["dbs"]
+description = "A tool for gene-centric comparative genomic analysis using publicly available data"
+authors = [{name = "Mario R. Mestre", email = "mario.mestre@bio.ku.dk"}]
+readme = "README.md"
 
 [project.scripts]
 flagcsnap = "flagcsnap.__main__:main"
+deep_mmseqs = "flagcsnap.deep_mmseqs:main"
+deep_jackhmmer = "flagcsnap.deep_jackhmmer:main"
+
+[tool.setuptools.packages.find]
+exclude = ["dbs"]

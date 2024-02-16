@@ -1,6 +1,5 @@
 import sys, os
 from time import sleep
-
 import rich
 import logging
 from rich.logging import RichHandler
@@ -8,20 +7,18 @@ import rich_click as click
 from rich.progress import Progress
 from rich.console import Console
 from rich.prompt import Prompt
-
 from flagcsnap.stream import Controller
 from flagcsnap.parse_ipg import IPGParser
 from flagcsnap.parse_assemblies import AssemblyParser
 from flagcsnap.cluster_proteins import ProteinClusterer
 from flagcsnap.parse_taxonomy import TaxonomyParser
+from flagcsnap.annotate_domains import AnnotDomains
 from flagcsnap.arrange_data import Arranger
 from flagcsnap.basic_plot import Plotter
-from flagcsnap.extra_tools import ExtraAnnotation
+from flagcsnap.extra_tools import ExtraAnnotation 
 from flagcsnap.extra_plot import ExtraPlotter
-
-
+from flagcsnap.clean_data import Cleaner
 from flagcsnap.utils import console,log,validate_input_file
-
 # Reading parameters and inputs
 
 click.rich_click.USE_RICH_MARKUP = True
@@ -51,14 +48,16 @@ click.rich_click.STYLE_HELP_OPTIONS_DEFAULTS = "dim"
 @click.option('--assembly-db', default=os.environ.get('CONDA_PREFIX')+"/db/flagcsnap", help='Assembly DB name.')
 @click.option('--img-db', default=None, help='Additional files from IMG databases search')
 @click.option('--img-nuc', default=None, help='Additional files from IMG databases search')
+@click.option('--keep', default=None, help='Keep temporary files')
+@click.option('--domains', default=None, help='MMseqs2 database to annotate domains', required='--domains-metadata' in sys.argv)
+@click.option('--domains-metadata', default=None, help='Metadata for MMseqs2 database to annotate domains', required='--domains' in sys.argv)
+@click.option('--min-prevalence', default=0.0, type=float, help='Minimum prevalence for a gene to be colored')
 
-
-# Main function
 
 
 def main(**kwargs):
     """
-    flagcsnap: A tool for gene-centric comparative genomic analysis using publicly available data
+        
 
     Read the documentation at: 
     """    
@@ -103,6 +102,14 @@ def main(**kwargs):
     taxparser = TaxonomyParser(assemblyparser)
     taxparser.run()
 
+    if kwargs['domains'] is not None:
+
+        console.print("🦠\tAnnotating protein domains")
+
+        domain_annot = AnnotDomains(taxparser)
+        domain_annot.run()
+        taxparser = domain_annot
+
     console.print("🧹\tArranging data")
     arranger = Arranger(taxparser)
     arranger.run()
@@ -118,6 +125,11 @@ def main(**kwargs):
     console.print("🖼️\tPlotting extra data")
     extraplotter = ExtraPlotter(extra)
     extraplotter.run()
+
+    console.print("♻️\tRemoving temporary files")
+    cleaner = Cleaner(extraplotter)
+    cleaner.run()
+
 
 if __name__ == '__main__':
     main()
