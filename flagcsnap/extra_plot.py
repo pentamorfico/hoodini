@@ -596,7 +596,6 @@ class ExtraPlotter:
 
             const [showWarning, setShowWarning] = useState(false);
             const [pdbData, setPdbData] = useState(null); // State to hold pdbData
-
             const [showStructure, setShowStructure] = useState(false);
 
             const { Divider, Typography,Box, Grid, Chip, IconButton, Paper, Fade, Button, Slider, Input } = MaterialUI;
@@ -644,39 +643,80 @@ class ExtraPlotter:
                     document.removeEventListener('mouseup', handleMouseUp);
                 };
             }, [isDragging, onDrag]);
-
-        async function fetchProteinStructure(sequence) {
-            const url = 'https://api.esmatlas.com/foldSequence/v1/pdb/';
-
-            if (sequence.length > 400) {
-                setShowWarning(true);
+            
+            
+            async function fetchProteinStructure(sequence, refseq_id) {
                 
-                return;
-            } 
-
-            else {
-                setShowWarning(false);
+            const esm_url = 'https://api.esmatlas.com/foldSequence/v1/pdb/';
+            const uniprot_url = "https://rest.uniprot.org/uniprotkb/search?query=" + refseq_id;
+            const afdb_url = "https://alphafold.ebi.ac.uk/api/prediction/";
 
             try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'text/plain'
-                    },
-                    body: sequence
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                const uniprot_response = await fetch(uniprot_url);
+                console.log(uniprot_response);
+                if (!uniprot_response.ok) {
+                    throw new Error(`HTTP error! status: ${uniprot_response.status}`);
                 }
 
-                const data = await response.text();
-                return data;
+                const uniprot_data = await uniprot_response.json();
+                
+                if (uniprot_data.results.length === 0){
+                    if (sequence.length > 400) {
+                        setShowWarning(true);
+                        
+                        return;
+                    } 
+
+                    else {
+                        setShowWarning(false);
+
+                    try {
+                        const response = await fetch(esm_url, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'text/plain'
+                            },
+                            body: sequence
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+
+                        const data = await response.text();
+                        return data;
+                    } catch (error) {
+                        console.error('Error fetching protein structure:', error);
+                    }
+                }
+
+                }
+
+                try {
+                    const results = uniprot_data.results;
+                    for (const result of results) {
+                        const uniProtKBCrossReferences = result.uniProtKBCrossReferences;
+                        for (const db_entry of uniProtKBCrossReferences) {
+                            if (db_entry.database === 'AlphaFoldDB') {
+                                const af_id = db_entry.id;
+                                console.log("AlphaFoldDB ID:", af_id);
+                                const afdb_data = await (await fetch(afdb_url + af_id)).json();
+                                const pdb_url = afdb_data[0].pdbUrl;
+                                console.log(pdb_url);
+                                const afdb_pdb = await (await fetch(pdb_url)).text();
+                                return afdb_pdb;
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('No AFDB-ID found:', error);
+                }
+
             } catch (error) {
                 console.error('Error fetching protein structure:', error);
             }
         }
-        }
+            
             function handleShowStructure() {
 
             if (showStructure) {
@@ -685,8 +725,8 @@ class ExtraPlotter:
             }
             
             const proteinSequence = object.sequence;
-            
-            fetchProteinStructure(proteinSequence).then(pdbData => {
+            const refseq_id = object.id;
+            fetchProteinStructure(proteinSequence, refseq_id).then(pdbData => {
                 if (pdbData) {
                     setShowStructure(true);
                     console.log('pdbData:', pdbData);
