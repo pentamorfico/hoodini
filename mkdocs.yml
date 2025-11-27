@@ -1,0 +1,43 @@
+site_name: Hoodini
+
+nav:
+  - Home: index.md
+  - Pipeline: pipeline/pipeline.md
+  - Guide: guide/guide.md
+
+repo_url: https://github.com/pentamorfico/hoodini.git
+repo_name: pentamorfico/hoodini
+
+theme:
+  name: material
+  palette:
+    scheme: default
+    primary: blue_grey
+    accent: blue
+  icon:
+    logo: material/owl
+  favicon: images/favicon.svg
+  features:
+    - header.autohide
+    - navigation.tabs
+    - navigation.footer
+    - content.code.annotate
+    - content.code.copy
+    - toc.integrate
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/pentamorfico
+      name: pentamorfico on GitHub
+    - icon: fontawesome/brands/x-twitter
+      link: https://x.com/pentamorfico
+      name: pentamorfico on X
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+
+extra_css:
+  - stylesheets/extra.css

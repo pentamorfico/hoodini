@@ -1,0 +1,21 @@
+/* Custom admonition: folder */
+.md-typeset .admonition.folder,
+.md-typeset details.folder {
+  border-color: rgb(158, 158, 158);
+}
+
+.md-typeset .folder > .admonition-title,
+.md-typeset .folder > summary {
+  background-color: rgba(158, 158, 158, 0.1);
+}
+
+.md-typeset .folder > .admonition-title::before,
+.md-typeset .folder > summary::before {
+  background-color: rgb(158, 158, 158);
+  -webkit-mask-image: var(--md-admonition-icon--folder);
+  mask-image: var(--md-admonition-icon--folder);
+}
+
+:root {
+  --md-admonition-icon--folder: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 4H4c-1.11 0-2 .89-2 2v12c0 1.097.903 2 2 2h16c1.097 0 2-.903 2-2V8c0-1.11-.9-2-2-2h-8l-2-2Z"/></svg>');
+}
