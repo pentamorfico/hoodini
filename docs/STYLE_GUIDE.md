@@ -79,11 +79,16 @@ Avoid adding new top-level scripts for helpers; instead, expand these modules or
 - Keep fixtures in `tests/fixtures/` or `tests/resources/` and avoid cross-test side effects.
 - Use descriptive test names (`test_build_tree_rejects_empty_input`) and arrange tests in Arrange/Act/Assert order with clear comments if needed.
 
+## Tooling and CI
+- Run `ruff check`, `black`, and `isort` locally before opening a PR. The CI workflow enforces these tools **only on Python files changed in the PR** to prevent legacy formatting issues from blocking documentation-only or small fixes.
+- Use `mypy` in lenient mode (current CI behavior) and tighten settings as modules gain full typing coverage.
+- Add or update tests whenever changing behavior; CI runs `pytest` when the `tests/` folder is present.
+
 ## Incremental cleanup roadmap
 1. Migrate shared helpers into the structured `hoodini/utils/` package and update imports.
 2. Group CLI code under `hoodini/cli/` and delegate to pipeline modules in `hoodini/pipelines/`.
 3. Standardize function prefixes: `run_*` only for top-level workflows; helper verbs elsewhere.
 4. Add type hints and Google-style docstrings to public modules as they are touched.
-5. Introduce linting/formatting tooling (e.g., `ruff`, `black`, `mypy`) and enforce via CI.
+5. Introduce linting/formatting tooling (e.g., `ruff`, `black`, `mypy`) and gradually expand CI enforcement from "changed files only" to full-tree checks as the backlog is addressed.
 
 Applying these conventions incrementally will give the codebase a predictable shape while minimizing disruption to existing workflows.

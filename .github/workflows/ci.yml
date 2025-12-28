@@ -22,14 +22,46 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
 
+      - name: Determine changed Python files
+        id: changed_files
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin ${{ github.base_ref }} --depth=1
+            files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.py')
+          else
+            files=$(git diff --name-only HEAD^ HEAD -- '*.py')
+          fi
+
+          if [ -z "$files" ]; then
+            echo "files=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          printf "files<<'EOF'\n%s\nEOF\n" "$files" >> "$GITHUB_OUTPUT"
+
       - name: Ruff (lint)
-        run: ruff check .
+        if: steps.changed_files.outputs.files != ''
+        run: ruff check ${{ steps.changed_files.outputs.files }}
+
+      - name: Ruff (lint) — skipped (no Python changes)
+        if: steps.changed_files.outputs.files == ''
+        run: echo "No Python files changed; skipping ruff."
 
       - name: Black (check)
-        run: black --check .
+        if: steps.changed_files.outputs.files != ''
+        run: black --check ${{ steps.changed_files.outputs.files }}
+
+      - name: Black (check) — skipped (no Python changes)
+        if: steps.changed_files.outputs.files == ''
+        run: echo "No Python files changed; skipping black."
 
       - name: isort (check)
-        run: isort --check-only .
+        if: steps.changed_files.outputs.files != ''
+        run: isort --check-only ${{ steps.changed_files.outputs.files }}
+
+      - name: isort (check) — skipped (no Python changes)
+        if: steps.changed_files.outputs.files == ''
+        run: echo "No Python files changed; skipping isort."
 
       - name: Mypy (lenient, no deps)
         run: mypy hoodini || true
