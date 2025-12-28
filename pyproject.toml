@@ -8,6 +8,27 @@ version = "1.0.0"
 description = "magic gene-neighborhood analyses"
 authors = [{name = "Mario R. Mestre", email = "mario.mestre@bio.ku.dk"}]
 readme = "README.md"
+dependencies = [
+    "click>=8.0",
+    "rich-click>=1.6",
+    "rich>=13.0",
+    "pandas>=2.0",
+    "polars>=1.0",
+    "numpy>=1.24",
+    "pyarrow>=15.0",
+    "biopython>=1.80",
+    "networkx>=3.0",
+    "requests>=2.31",
+    "tomli>=2.0",
+    "ete3>=3.1",
+    "pyhmmer>=0.10",
+    "tqdm>=4.66",
+    "uniprot-id-mapper>=0.6",
+    "taxoniq>=0.7",
+    "gb-io>=0.2",
+    "pyrodigal>=3.6",
+    "orfipy>=0.0.4",
+]
 
 [project.scripts]
 hoodini = "hoodini.__main__:main"

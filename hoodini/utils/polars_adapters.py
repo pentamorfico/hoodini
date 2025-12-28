@@ -9,17 +9,20 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Mapping
 
+import pandas as pd
 import polars as pl
 
 from hoodini.models.schemas import TableSchema, ensure_schema
 
 
-def to_polars(df: pl.DataFrame | pl.LazyFrame | Any, *, schema: TableSchema | None = None) -> pl.DataFrame:
+def to_polars(df: pl.DataFrame | pl.LazyFrame | pd.DataFrame | Any, *, schema: TableSchema | None = None) -> pl.DataFrame:
     """Convert incoming data to a Polars DataFrame and optionally enforce schema."""
     if isinstance(df, pl.DataFrame):
         out = df
     elif isinstance(df, pl.LazyFrame):
         out = df.collect()
+    elif isinstance(df, pd.DataFrame):
+        out = pl.from_pandas(df)
     else:
         raise TypeError(f"Unsupported dataframe type: {type(df)}; expected Polars")
 
@@ -28,9 +31,13 @@ def to_polars(df: pl.DataFrame | pl.LazyFrame | Any, *, schema: TableSchema | No
     return out
 
 
-def to_pandas(df: pl.DataFrame | pl.LazyFrame | Any):
-    """Deprecated: pandas removed from dependencies."""
-    raise ImportError("pandas has been removed; please use Polars instead")
+def to_pandas(df: pl.DataFrame | pl.LazyFrame | Any) -> pd.DataFrame:
+    """Convert Polars data to pandas for downstream libraries that require it."""
+    if isinstance(df, pl.LazyFrame):
+        df = df.collect()
+    if isinstance(df, pl.DataFrame):
+        return df.to_pandas()
+    raise TypeError(f"Unsupported dataframe type: {type(df)}; expected Polars")
 
 
 def ensure_required(df: pl.DataFrame, cols: Iterable[str]) -> None:

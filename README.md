@@ -34,6 +34,15 @@ pip install -e .
 hoodini download databases
 ```
 
+### Development and testing
+
+To run the unit tests and linters locally, install the development requirements after creating your environment:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
 ## Quick start
 
 Run the core pipeline using the CLI entrypoint. The package exposes a `hoodini` console script. The primary command is `run`:
