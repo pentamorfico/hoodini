@@ -15,6 +15,10 @@
 
 This README documents installation, the command-line interface and all available options, produced output files, and a few examples to get you started.
 
+## Development standards
+
+See [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md) for conventions on repository structure, naming, imports, typing, and testing. New code should follow these guidelines to keep the project consistent with PEP 8 and the Google Python Style Guide.
+
 ## Installation
 
 Before using `hoodini`, ensure you have Python and required system tools installed. The project provides an example Conda environment in `environment.yml`. It is advised to create the environment with mamba instead of conda due to beter conflict resolution. 
