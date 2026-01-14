@@ -1,3 +1,0 @@
-recursive-include hoodini *
-exclude *.pyc
-exclude __pycache__

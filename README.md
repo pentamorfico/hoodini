@@ -24,7 +24,7 @@ Suggested install steps (adapt channel list to your environment):
 ```bash
 # create and activate environment (example)
 mamba env create -f environment.yml
-# install python-only extras
+# install python-only extras (src-layout)
 pip install -e .
 # download hoodini external databases
 hoodini download databases
@@ -85,9 +85,6 @@ Options for `hoodini run` (all flags may also be present in a TOML config and ar
 - `--num-threads <int>`
    - Number of worker threads to use where parallelism is supported.
 
-- `--assembly-folder <path>`
-   - Path to a local assembly folder (use local copies instead of downloading).
-
 - `--assembly-db <path>`
    - Path to an assembly database (precomputed index / parquet file).
 
@@ -95,10 +92,10 @@ Options for `hoodini run` (all flags may also be present in a TOML config and ar
    - Path(s) to local IMG database files (protein and nucleotide variants) used for annotation.
 
 - `--prot-links` (flag)
-   - Run all-vs-all pairwise protein comparisons (produces `defaultProteinLinks.txt`).
+   - Run all-vs-all pairwise protein comparisons (produces `protein_links.txt`).
 
 - `--nt-links` (flag)
-   - Run pairwise nucleotide comparisons (produces `defaultNucleotideLinks.txt`).
+   - Run pairwise nucleotide comparisons (produces `nucleotide_links.txt`).
 
 - `--ani-mode <mode>`
    - ANI calculation mode used when building `ani_tree` (only used if `--tree-mode ani_tree`).
@@ -120,12 +117,6 @@ Options for `hoodini run` (all flags may also be present in a TOML config and ar
 
 - `--win <int>`
    - Window size (number of genes or nucleotides depending on `--win-mode`).
-
-- `--height-factor <int>`
-   - Height factor used for plotting/layout.
-
-- `--ngenes <int>`
-   - Number of genes in the context window (alias to gene-window sizing).
 
 - `--min-win <int>`
    - Minimum window size on each side of the target.
@@ -160,10 +151,8 @@ Options for `hoodini run` (all flags may also be present in a TOML config and ar
 - `--genomad` (flag)
    - Run GenoMAD for mobile genetic element identification.
 
-- `--antidefense` (flag)
    - Identify anti-defense (ACR) genes.
 
-- `--phrogs` (flag)
    - Annotate proteins with PHROGs.
 
 - `--sorfs` (flag)
@@ -217,15 +206,22 @@ Utility commands: `hoodini utils`
 
 The pipeline writes a small set of standardized output files to the `--output` folder. The following files are produced or placeholder files are created so downstream tools can rely on them:
 
-- `defaultGFF.gff` — combined GFF for parsed assemblies.
-- `defaultBaselines.txt` — baseline table with `hood_id`, `seqid`, `start`, `end`, `align_gene` for each neighborhood.
-- `defaultProteinMetadata.txt` — protein table containing `gene_id`, `cluster`, `product`, and merged annotations.
-- `defaultTreeMetadata.txt` — per-leaf metadata for the tree (leaf ids, etc.).
-- `defaultNewick.txt` — Newick-formatted tree string when a tree is produced or provided.
-- `defaultNucleotideLinks.txt` — pairwise nucleotide alignment links (placeholder header-only file is written if nucleotide links are not produced).
-- `defaultProteinLinks.txt` — pairwise protein links (placeholder header-only file is written if protein comparisons are not run).
+- `gff.gff` — combined GFF for parsed assemblies.
+- `hoods.txt` — hoods table with `hood_id`, `seqid`, `start`, `end`, `align_gene` for each neighborhood.
+- `protein_metadata.txt` — protein table containing `gene_id`, `cluster`, `product`, and merged annotations.
+- `tree_metadata.txt` — per-leaf metadata for the tree (leaf ids, etc.).
+- `tree.nwk` — Newick-formatted tree string when a tree is produced or provided.
+- `nucleotide_links.txt` — pairwise nucleotide alignment links (placeholder header-only file is written if nucleotide links are not produced).
+- `protein_links.txt` — pairwise protein links (placeholder header-only file is written if protein comparisons are not run).
 
-Extra annotations (PADLOC, DefenseFinder, PHROGs, etc.) are merged into `defaultProteinMetadata.txt` when requested.
+Extra annotations (PADLOC, DefenseFinder, PHROGs, etc.) are merged into `protein_metadata.txt` when requested.
+
+### Visualization bundle (`hoodini-viz/`)
+When the pipeline renders the interactive viewer, files are organized under `results/hoodini-viz/`:
+
+- Root: `tree.nwk` and `hoodini-viz.html`.
+- `tsv/`: `gff.gff`, `hoods.txt`, `protein_metadata.txt`, `tree_metadata.txt`, `nucleotide_links.txt`, `protein_links.txt`, and optional domain tables when requested.
+- `parquet/`: columnar equivalents used by the viewer (`gff.parquet`, `hoods.parquet`, `protein_metadata.parquet`, `tree_metadata.parquet`, `nucleotide_links.parquet`, `protein_links.parquet`, and optional `domains.parquet`, `domains_metadata.parquet`).
 
 ## Examples
 

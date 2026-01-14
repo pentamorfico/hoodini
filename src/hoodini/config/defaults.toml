@@ -1,0 +1,74 @@
+[general]
+output = "results"
+num_threads = 10
+max_concurrent_downloads = 8
+apikey = ""
+remote_evalue = 1e-5
+remote_max_targets = 100
+
+[window]
+# mod: "win_nts" | "win_genes"
+mod = "win_nts"
+wn = 20000
+minwin = 2000
+# minwin_type: "total" | "upstream" | "downstream" | "both"
+minwin_type = "both"
+
+[tree]
+# tree_mode: "taxonomy" | "fast_nj" | "aai_tree" | "ani_tree" | "fast_ml" | "use_input_tree" | "foldmason_tree" | "neigh_similarity_tree" | "neigh_phylo_tree"
+tree_mode = "fast_ml"
+tree_file = "target_prots.nwk"
+nj_algorithm = "nj"
+
+[aai]
+# aai_mode: "wgrr" | "aai" | "hyper" | "all"
+aai_mode = "wgrr"
+# aai-subset-mode: "target_prot" | "target_region" | "window"
+aai-subset-mode = "target_region"
+
+[ani]
+ani_mode = "fastani"
+
+[clustering]
+# cand_mode: "any_ipg" | "best_ipg" | "best_id" | "one_id" | "same_id"
+cand_mode = "best_id"
+# clust_method: "diamond_deepclust" | "deepmmseqs" | "jackhmmer" | "blastp"
+clust_method = "diamond_deepclust"
+
+[annotations]
+# --padloc (flag)
+padloc = false
+# --deffinder (flag)
+deffinder = false
+# --ncrna (flag)
+ncrna = false
+# --cctyper (flag)
+cctyper = false
+# --genomad (flag)
+genomad = false
+# --sorfs (flag)
+sorfs = false
+# --emapper (flag)
+emapper = false
+domains = ""
+domains_metadata = ""
+# Minimum percent identity threshold for BLAST hits in wGRR/AAI calculations
+min_pident = 30.0
+
+[pairwise]
+# --prot-links (flag)
+prot_links = false
+# --nt-links (flag)
+nt_links = false
+# nt_aln_mode: "blastn" | "fastani" | "minimap2" | "intergenic_blastn"
+nt_aln_mode = "blastn"
+
+[paths]
+assembly_folder = ""
+img_db = ""
+img_nuc = ""
+blast = ""
+# --keep (flag)
+keep = false
+# --force (flag)
+force = false
