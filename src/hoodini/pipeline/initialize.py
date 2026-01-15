@@ -149,6 +149,7 @@ def check_assembly_db() -> None:
 def check_playwright_browser() -> None:
     """
     Check if Playwright Chromium is installed and install it if missing.
+    Verifies the actual executable exists, not just the directory.
     """
     import os
     import subprocess
@@ -167,12 +168,17 @@ def check_playwright_browser() -> None:
             home / "AppData" / "Local" / "ms-playwright",  # Windows
         ]
 
-        # Check if chromium exists in any cache location
+        # Check if chromium executable actually exists (not just the directory)
         for cache_path in possible_paths:
             if cache_path.exists():
-                chromium_dirs = list(cache_path.glob("chromium*"))
-                if chromium_dirs:
-                    return  # Already installed
+                # Look for actual chrome executable inside chromium dirs
+                for chromium_dir in cache_path.glob("chromium*"):
+                    # Check for headless shell executable (Linux/macOS)
+                    executables = list(chromium_dir.glob("**/chrome-headless-shell")) + \
+                                  list(chromium_dir.glob("**/chrome")) + \
+                                  list(chromium_dir.glob("**/chromium"))
+                    if executables and executables[0].is_file():
+                        return  # Already installed and executable exists
 
         info("🎭 Playwright Chromium not found. Installing (one-time setup)...")
         subprocess.run(
