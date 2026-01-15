@@ -166,14 +166,14 @@ def check_playwright_browser() -> None:
             home / "Library" / "Caches" / "ms-playwright",  # macOS
             home / "AppData" / "Local" / "ms-playwright",  # Windows
         ]
-        
+
         # Check if chromium exists in any cache location
         for cache_path in possible_paths:
             if cache_path.exists():
                 chromium_dirs = list(cache_path.glob("chromium*"))
                 if chromium_dirs:
                     return  # Already installed
-        
+
         info("🎭 Playwright Chromium not found. Installing (one-time setup)...")
         subprocess.run(
             ["playwright", "install", "--only-shell", "chromium"],
@@ -181,12 +181,11 @@ def check_playwright_browser() -> None:
             timeout=180,
         )
         info("✅ Playwright Chromium installed successfully")
-            
+
     except subprocess.TimeoutExpired:
         warn("Playwright install timed out. Run 'playwright install chromium' manually.")
     except Exception as e:
         warn(f"Could not check/install Playwright: {e}")
-
 
 
 def _prompt_yes_no(prompt_text: str, default: str = "no") -> bool:

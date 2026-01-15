@@ -113,13 +113,13 @@ def _run_remote_blast(
 
         # 2. FILL SEQUENCE
         textarea = page.locator('textarea[aria-label*="accession"]').or_(
-            page.locator('textarea').first
+            page.locator("textarea").first
         )
         textarea.wait_for(state="visible")
         textarea.fill(fasta_text)
 
         # 3. EXPAND "Algorithm parameters" section
-        algo_params = page.locator('text=Algorithm parameters').first
+        algo_params = page.locator("text=Algorithm parameters").first
         algo_params.click()
         time.sleep(0.5)
 
@@ -146,14 +146,14 @@ def _run_remote_blast(
 
         # Method 1: Get RID from URL parameter
         current_url = page.url
-        match = re.search(r'[&?]RID=([A-Z0-9]+)', current_url)
+        match = re.search(r"[&?]RID=([A-Z0-9]+)", current_url)
         if match:
             rid = match.group(1)
 
         # Method 2: Fallback - look for "Request ID" in page
         if not rid:
             content = page.content()
-            match = re.search(r'Request ID[^A-Z0-9]*([A-Z0-9]{11,12})', content)
+            match = re.search(r"Request ID[^A-Z0-9]*([A-Z0-9]{11,12})", content)
             if match:
                 rid = match.group(1)
 
@@ -162,7 +162,7 @@ def _run_remote_blast(
             return []
 
         # 8. POLL FOR RESULTS
-        rid_clean = rid[4:] if rid.startswith('RID-') else rid
+        rid_clean = rid[4:] if rid.startswith("RID-") else rid
 
         status_url = f"https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Get&RID={rid_clean}&FORMAT_OBJECT=SearchInfo"
 
@@ -189,15 +189,15 @@ def _run_remote_blast(
         content = resp.text
 
         # Parse and limit to max_seqs
-        all_lines = content.strip().split('\n')
-        data_lines = [l for l in all_lines if l and not l.startswith('#')]
+        all_lines = content.strip().split("\n")
+        data_lines = [l for l in all_lines if l and not l.startswith("#")]
 
         # Limit data lines to requested max_seqs
         limited_lines = data_lines[:max_targets]
 
         hits = []
         for line in limited_lines:
-            cols = line.split(',')
+            cols = line.split(",")
             if len(cols) >= 2:
                 hits.append(cols[1].strip().strip('"'))
 
