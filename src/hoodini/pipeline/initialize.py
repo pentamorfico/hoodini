@@ -174,9 +174,11 @@ def check_playwright_browser() -> None:
                 # Look for actual chrome executable inside chromium dirs
                 for chromium_dir in cache_path.glob("chromium*"):
                     # Check for headless shell executable (Linux/macOS)
-                    executables = list(chromium_dir.glob("**/chrome-headless-shell")) + \
-                                  list(chromium_dir.glob("**/chrome")) + \
-                                  list(chromium_dir.glob("**/chromium"))
+                    executables = (
+                        list(chromium_dir.glob("**/chrome-headless-shell"))
+                        + list(chromium_dir.glob("**/chrome"))
+                        + list(chromium_dir.glob("**/chromium"))
+                    )
                     if executables and executables[0].is_file():
                         return  # Already installed and executable exists
 
