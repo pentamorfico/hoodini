@@ -3,8 +3,6 @@ channels:
   - bioconda
   - conda-forge
   - defaults
-  - padlocbio
-  - russel88
 dependencies:
   - python>=3.10
   - pip

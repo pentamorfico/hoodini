@@ -151,13 +151,8 @@ def check_playwright_browser() -> None:
     Check if Playwright Chromium is installed and install it if missing.
     Verifies the actual executable exists, not just the directory.
     """
-    import os
     import subprocess
     from pathlib import Path
-
-    # Skip in Docker or CI
-    if Path("/.dockerenv").exists() or os.getenv("CI"):
-        return
 
     try:
         # Standard playwright browser cache locations
