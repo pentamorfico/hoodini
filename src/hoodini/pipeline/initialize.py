@@ -171,13 +171,13 @@ def check_playwright_browser() -> None:
         # Check if chromium exists in any cache location
         for cache_path in possible_paths:
             if cache_path.exists():
-                chromium_dirs = list(cache_path.glob("chromium-*"))
+                chromium_dirs = list(cache_path.glob("chromium*"))
                 if chromium_dirs:
                     return  # Already installed
         
         info("🎭 Playwright Chromium not found. Installing (one-time setup)...")
         subprocess.run(
-            [sys.executable, "-m", "playwright", "install", "chromium"],
+            [sys.executable, "-m", "playwright", "install", "--only-shell", "chromium"],
             check=True,
             timeout=180,
         )
