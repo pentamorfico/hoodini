@@ -177,7 +177,7 @@ def check_playwright_browser() -> None:
         
         info("🎭 Playwright Chromium not found. Installing (one-time setup)...")
         subprocess.run(
-            [sys.executable, "-m", "playwright", "install", "--only-shell", "chromium"],
+            ["playwright", "install", "--only-shell", "chromium"],
             check=True,
             timeout=180,
         )
