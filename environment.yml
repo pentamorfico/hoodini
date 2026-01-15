@@ -6,19 +6,15 @@ channels:
   - padlocbio
   - russel88
 dependencies:
-  - python>=3.8
-  - pandas
-  - numpy
-  - matplotlib
-  - rich
-  - rich-click
-  - pyarrow
-  - polars
-  - biopython
-  - networkx
-  - requests
-  - tomli
-  - ete3
+  - python>=3.10
+  - pip
+  - openssl
+  - certifi
+  - ca-certificates
+  - entrez-direct
+  - aria2
+  - pigz
+  - blast
   - diamond
   - skani
   - fastani
@@ -29,28 +25,4 @@ dependencies:
   - infernal
   - famsa
   - veryfasttree
-  - openssl
-  - certifi
-  - ca-certificates
-  - pip
-  - entrez-direct
-  - aria2
-  - pigz
-  - blast
-  - cctyper
-  - pip:
-      - pyhmmer
-      - diamondonpy
-      - uniprot-id-mapper
-      - alphafetcher
-      - taxoniq
-      - gb-io
-      - orfipy
-      - httpx
-      - aiohttp
-      - git+https://github.com/pentamorfico/CRISPRCasTyper.git@develop
-      - aria2p
-      - jinja2
-      - mdmparis-defense-finder
-      - mappy
 
