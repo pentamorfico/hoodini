@@ -1,0 +1,4 @@
+#!/bin/bash
+# Helper script to build the Docker image
+
+docker build -t hoodini:latest .

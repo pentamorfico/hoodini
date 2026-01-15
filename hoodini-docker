@@ -1,0 +1,12 @@
+#!/bin/bash
+# Hoodini Docker wrapper - run hoodini as if it were installed locally
+
+IMAGE_NAME="${HOODINI_IMAGE:-hoodini:latest}"
+
+# Run hoodini with current directory mounted
+docker run --rm \
+    -v "$(pwd):/work" \
+    -w /work \
+    -u "$(id -u):$(id -g)" \
+    "$IMAGE_NAME" \
+    "$@"

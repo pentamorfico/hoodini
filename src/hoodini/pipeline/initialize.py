@@ -51,6 +51,7 @@ def initialize_inputs(
     """
 
     check_assembly_db()
+    check_playwright_browser()
 
     if output:
         output_folder = Path(output)
@@ -143,6 +144,62 @@ def check_assembly_db() -> None:
             return
     except Exception as e:
         error(f"Error checking or downloading assembly DB: {e}")
+
+
+def check_playwright_browser() -> None:
+    """
+    Check if Playwright Chromium is installed and install it if missing.
+    Only runs once per environment (creates a marker file).
+    """
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    # Skip in Docker or CI
+    if Path("/.dockerenv").exists() or os.getenv("CI"):
+        return
+
+    # Check marker file to avoid checking repeatedly
+    try:
+        from platformdirs import user_data_dir
+        marker_dir = Path(user_data_dir("hoodini", "hoodini"))
+        marker_dir.mkdir(parents=True, exist_ok=True)
+        marker_file = marker_dir / ".playwright_installed"
+        
+        if marker_file.exists():
+            return  # Already checked/installed
+        
+        info("🎭 Checking Playwright Chromium installation...")
+        
+        # Try to run playwright
+        result = subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "--dry-run", "chromium"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        
+        # If dry-run succeeds, check if chromium needs installation
+        if result.returncode == 0:
+            # Install chromium
+            info("📥 Installing Playwright Chromium browser (one-time setup)...")
+            subprocess.run(
+                [sys.executable, "-m", "playwright", "install", "chromium"],
+                check=True,
+                timeout=120,
+            )
+            info("✅ Playwright Chromium installed successfully")
+            marker_file.touch()
+        else:
+            # Playwright not working, but don't fail
+            warn("Playwright not properly configured. Run 'hoodini-post-install' manually if needed.")
+            marker_file.touch()  # Mark as checked to avoid repeated attempts
+            
+    except Exception as e:
+        # Silent fail - don't break pipeline
+        warn(f"Could not auto-install Playwright: {e}. Run 'hoodini-post-install' manually.")
+
 
 
 def _prompt_yes_no(prompt_text: str, default: str = "no") -> bool:
