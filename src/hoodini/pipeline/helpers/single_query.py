@@ -10,8 +10,7 @@ from pathlib import Path
 import requests
 
 try:
-    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 except Exception:  # playwright optional; fallback handled below
     PlaywrightTimeoutError = None
     sync_playwright = None
