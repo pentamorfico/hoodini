@@ -149,7 +149,6 @@ def check_assembly_db() -> None:
 def check_playwright_browser() -> None:
     """
     Check if Playwright Chromium is installed and install it if missing.
-    Only runs once per environment (creates a marker file).
     """
     import os
     import subprocess
@@ -160,45 +159,34 @@ def check_playwright_browser() -> None:
     if Path("/.dockerenv").exists() or os.getenv("CI"):
         return
 
-    # Check marker file to avoid checking repeatedly
     try:
-        from platformdirs import user_data_dir
-        marker_dir = Path(user_data_dir("hoodini", "hoodini"))
-        marker_dir.mkdir(parents=True, exist_ok=True)
-        marker_file = marker_dir / ".playwright_installed"
+        # Standard playwright browser cache locations
+        home = Path.home()
+        possible_paths = [
+            home / ".cache" / "ms-playwright",  # Linux
+            home / "Library" / "Caches" / "ms-playwright",  # macOS
+            home / "AppData" / "Local" / "ms-playwright",  # Windows
+        ]
         
-        if marker_file.exists():
-            return  # Already checked/installed
+        # Check if chromium exists in any cache location
+        for cache_path in possible_paths:
+            if cache_path.exists():
+                chromium_dirs = list(cache_path.glob("chromium-*"))
+                if chromium_dirs:
+                    return  # Already installed
         
-        info("🎭 Checking Playwright Chromium installation...")
-        
-        # Try to run playwright
-        result = subprocess.run(
-            [sys.executable, "-m", "playwright", "install", "--dry-run", "chromium"],
-            capture_output=True,
-            text=True,
-            timeout=5,
+        info("🎭 Playwright Chromium not found. Installing (one-time setup)...")
+        subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            check=True,
+            timeout=180,
         )
-        
-        # If dry-run succeeds, check if chromium needs installation
-        if result.returncode == 0:
-            # Install chromium
-            info("📥 Installing Playwright Chromium browser (one-time setup)...")
-            subprocess.run(
-                [sys.executable, "-m", "playwright", "install", "chromium"],
-                check=True,
-                timeout=120,
-            )
-            info("✅ Playwright Chromium installed successfully")
-            marker_file.touch()
-        else:
-            # Playwright not working, but don't fail
-            warn("Playwright not properly configured. Run 'hoodini-post-install' manually if needed.")
-            marker_file.touch()  # Mark as checked to avoid repeated attempts
+        info("✅ Playwright Chromium installed successfully")
             
+    except subprocess.TimeoutExpired:
+        warn("Playwright install timed out. Run 'playwright install chromium' manually.")
     except Exception as e:
-        # Silent fail - don't break pipeline
-        warn(f"Could not auto-install Playwright: {e}. Run 'hoodini-post-install' manually.")
+        warn(f"Could not check/install Playwright: {e}")
 
 
 

@@ -39,10 +39,15 @@ docs/_build/
 htmlcov/
 .tox/
 
-# Example files (optional - comment out if needed in container)
+# Example files
 example/
 
-# Large data files (keep structure but not actual data)
+# All data directory (users download databases separately)
+**/data/
+src/hoodini/data/
+src/hoodini/data/*
+
+# Large data files
 *.fasta
 *.fastq
 *.fa
