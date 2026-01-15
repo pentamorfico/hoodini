@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import re
 import subprocess
 import time
@@ -11,7 +10,8 @@ from pathlib import Path
 import requests
 
 try:
-    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+    from playwright.sync_api import sync_playwright
 except Exception:  # playwright optional; fallback handled below
     PlaywrightTimeoutError = None
     sync_playwright = None
@@ -190,7 +190,6 @@ def _run_remote_blast(
 
         # Parse and limit to max_seqs
         all_lines = content.strip().split('\n')
-        header_lines = [l for l in all_lines if l.startswith('#')]
         data_lines = [l for l in all_lines if l and not l.startswith('#')]
 
         # Limit data lines to requested max_seqs

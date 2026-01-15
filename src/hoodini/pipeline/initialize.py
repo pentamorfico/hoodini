@@ -152,7 +152,6 @@ def check_playwright_browser() -> None:
     """
     import os
     import subprocess
-    import sys
     from pathlib import Path
 
     # Skip in Docker or CI
