@@ -24,5 +24,17 @@ dependencies:
   - famsa
   - veryfasttree
   - firefox
-  - geckodriver
+  - gtk3
+  - atk
+  - xorg-libxcomposite
+  - xorg-libxdamage
+  - xorg-libxfixes
+  - xorg-libxrandr
+  - xorg-libxrender
+  - xorg-libxext
+  - cairo
+  - pango
+  - gdk-pixbuf
+  - fontconfig
+  - freetype
 

@@ -30,6 +30,82 @@ pip install -e .
 hoodini download databases
 ```
 
+### Multi-backend Installation Support
+
+`hoodini` supports installation and execution on **conda**, **mamba**, and **pixi** package managers. The environment contains all necessary dependencies including Firefox for remote BLAST automation.
+
+#### Conda / Mamba
+
+```bash
+# Create environment
+mamba env create -f environment.yml
+mamba activate hoodini
+
+# Install package in editable mode
+pip install -e .
+
+# Install Firefox for remote BLAST automation
+playwright install firefox
+
+# Verify browser automation setup
+python -c "from hoodini.utils.runtime_env import verify_gtk_availability; print('GTK3 available:', verify_gtk_availability())"
+```
+
+#### Pixi
+
+```bash
+# Install and activate with pixi
+pixi install
+pixi shell
+
+# Install Firefox for remote BLAST automation (inside pixi shell)
+playwright install firefox
+
+# Or without activation shell
+pixi run playwright install firefox
+pixi run hoodini run --input accessions.txt --output results
+```
+
+#### Docker
+
+A Dockerfile is provided for containerized deployments:
+
+```bash
+# Build image
+docker build -t hoodini:latest .
+
+# Run in container
+docker run --rm -v /data:/data hoodini:latest hoodini run --input /data/accessions.txt --output /data/results
+```
+
+### Browser Automation Setup
+
+`hoodini` uses Playwright Firefox for remote BLAST queries. The setup is mostly automatic:
+
+- **Firefox binary**: Automatically installed on first import (via `playwright install firefox`)
+- **GTK3/X11 dependencies**: Provided by conda/mamba/pixi `environment.yml`
+- **Library path setup**: Automatically detected from active environment via `runtime_env.py`
+
+**Troubleshooting browser issues:**
+
+If you encounter "Could not find GTK3 libraries" errors:
+
+```bash
+# Verify environment has required libs
+python -c "from hoodini.utils.runtime_env import find_candidate_lib_dirs, verify_gtk_availability; \
+print('Lib dirs:', find_candidate_lib_dirs()); \
+print('GTK3:', verify_gtk_availability())"
+
+# If Firefox binary missing, manually install:
+playwright install firefox
+
+# If missing GTK3, reinstall environment
+mamba env remove -n hoodini
+mamba env create -f environment.yml -n hoodini
+```
+
+
+
 ## Quick start
 
 Run the core pipeline using the CLI entrypoint. The package exposes a `hoodini` console script. The primary command is `run`:

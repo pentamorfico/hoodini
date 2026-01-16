@@ -2,26 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import subprocess
-import time
 from pathlib import Path
 
 import requests
+from playwright.async_api import async_playwright
 
-try:
-    from selenium import webdriver
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.support import expected_conditions as EC
-    from selenium.webdriver.support.ui import Select, WebDriverWait
-except Exception:  # selenium optional; fallback handled below
-    webdriver = None
-    By = None
-    WebDriverWait = None
-    Select = None
-    EC = None
-
+from hoodini.utils.browser_setup import ensure_playwright_firefox
 from hoodini.utils.logging_utils import error, info, warn
+from hoodini.utils.runtime_env import apply_ld_library_path
 
 UNIPROT_RE = re.compile(r"^[A-NR-Z][0-9][A-Z0-9]{3}[0-9](?:-[0-9]+)?$")
 VALID_MAX_SEQS = [10, 50, 100, 250, 500, 1000, 5000]
@@ -85,202 +76,143 @@ def _fetch_fasta_for_id(prot_id: str) -> str:
         return ""
 
 
-def _run_remote_blast(
+
+
+async def _run_remote_blast(
     fasta_text: str,
     evalue: float,
     max_targets: int,
     db: str = "nr_cluster_seq",
 ) -> list[str]:
-    """Run remote BLAST via NCBI using Selenium + Firefox."""
+    """Run remote BLAST via NCBI using Playwright Firefox."""
     dropdown_value = _pick_dropdown_value(max_targets)
 
-    if webdriver is None:
-        error("Selenium not available. Install with: mamba install -c conda-forge selenium")
+    # Ensure Firefox is installed
+    if not ensure_playwright_firefox():
+        error("❌ Could not install Playwright Firefox")
         return []
 
-    info("🚀 BLAST Search (Firefox + Selenium)")
+    info("🚀 BLAST Search (Firefox + Playwright)")
     info(f"   Max sequences: {max_targets}")
     if dropdown_value != max_targets:
         info(f"   (using dropdown: {dropdown_value}, will limit download to {max_targets})")
     info(f"   E-value: {evalue}")
     info("")
 
-    options = webdriver.FirefoxOptions()
-    options.add_argument("-headless")
+    # Set up environment for Playwright Firefox in conda/pixi/mamba
+    apply_ld_library_path()
 
-    driver = None
-    try:
-        driver = webdriver.Firefox(options=options)
-        wait = WebDriverWait(driver, 60)
+    async with async_playwright() as p:
+        browser = await p.firefox.launch(headless=True)
+        page = await browser.new_page()
 
-        # 1) Open BLAST proteins page
-        driver.get("https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE=Proteins")
+        try:
+            # 1) Open BLAST proteins page
+            await page.goto("https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE=Proteins")
 
-        # 2) Fill textarea
-        textarea = None
-        for by, sel in [
-            (By.CSS_SELECTOR, 'textarea[aria-label*="accession" i]'),
-            (By.CSS_SELECTOR, "textarea"),
-        ]:
+            # 2) Fill textarea with FASTA
+            await page.fill('textarea[aria-label*="accession" i]', fasta_text)
+
+            # 3) Try to expand Algorithm parameters
             try:
-                textarea = wait.until(EC.presence_of_element_located((by, sel)))
-                if textarea:
-                    break
+                await page.click("summary:has-text('Algorithm parameters')")
+                await page.wait_for_timeout(300)
             except Exception:
                 pass
 
-        if not textarea:
-            error("❌ Could not find BLAST query textarea.")
-            return []
+            # 4) Set MAX_NUM_SEQ dropdown
+            try:
+                await page.select_option('select[name="MAX_NUM_SEQ"]', value=str(dropdown_value))
+            except Exception as e:
+                warn(f"Could not set MAX_NUM_SEQ: {e}")
 
-        textarea.clear()
-        textarea.send_keys(fasta_text)
+            # 5) Set e-value
+            try:
+                await page.fill('input[name="EXPECT"]', str(evalue))
+            except Exception as e:
+                warn(f"Could not set EXPECT: {e}")
 
-        # 3) Expand Algorithm parameters (robust)
-        try:
-            algo = wait.until(
-                EC.element_to_be_clickable(
-                    (
-                        By.XPATH,
-                        "//summary[contains(., 'Algorithm parameters')]"
-                        " | //a[contains(., 'Algorithm parameters')]"
-                        " | //button[contains(., 'Algorithm parameters')]",
-                    )
-                )
+            # 6) Click BLAST button
+            await page.click('input[value="BLAST"]')
+
+            # 7) Extract RID from URL or HTML
+            rid = None
+            for _ in range(120):  # 60 seconds
+                cur_url = page.url
+                m = re.search(r"[&?]RID=([A-Z0-9]+)", cur_url)
+                if m:
+                    rid = m.group(1)
+                    break
+
+                content = await page.content()
+                m = re.search(r"Request ID[^A-Z0-9]*([A-Z0-9]{11,12})", content)
+                if m:
+                    rid = m.group(1)
+                    break
+
+                await page.wait_for_timeout(500)
+
+            if not rid:
+                error("❌ Could not find RID.")
+                return []
+
+            rid_clean = rid[4:] if rid.startswith("RID-") else rid
+
+            # 8) Poll status via requests
+            status_url = (
+                "https://blast.ncbi.nlm.nih.gov/Blast.cgi"
+                f"?CMD=Get&RID={rid_clean}&FORMAT_OBJECT=SearchInfo"
             )
-            driver.execute_script("arguments[0].click();", algo)
-            time.sleep(0.3)
-        except Exception:
-            pass
 
-        # 4) Set MAX_NUM_SEQ dropdown
-        try:
-            max_sel = wait.until(EC.presence_of_element_located((By.NAME, "MAX_NUM_SEQ")))
-            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", max_sel)
-            time.sleep(0.2)
-            Select(max_sel).select_by_value(str(dropdown_value))
-        except Exception as e:
-            warn(f"Could not set MAX_NUM_SEQ: {e}")
+            for _ in range(600):
+                resp = requests.get(status_url, timeout=30)
+                text = resp.text
 
-        # 5) Set e-value (robust: scroll + JS fallback)
-        try:
-            ev = wait.until(EC.presence_of_element_located((By.NAME, "EXPECT")))
-            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", ev)
-            time.sleep(0.2)
-
-            try:
-                ev.clear()
-                ev.send_keys(str(evalue))
-            except Exception:
-                driver.execute_script("arguments[0].value = arguments[1];", ev, str(evalue))
-                driver.execute_script(
-                    "arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", ev
-                )
-        except Exception as e:
-            warn(f"Could not set EXPECT: {e}")
-
-        # 6) Click BLAST
-        blast_btn = None
-        for by, sel in [
-            (By.CSS_SELECTOR, '#blastButton1 input[value="BLAST"]'),
-            (By.CSS_SELECTOR, 'input[value="BLAST"]'),
-        ]:
-            try:
-                blast_btn = wait.until(EC.element_to_be_clickable((by, sel)))
-                if blast_btn:
+                if "Status=READY" in text and "ThereAreHits=yes" in text:
                     break
-            except Exception:
-                pass
+                if "Status=READY" in text and "ThereAreHits=no" in text:
+                    warn("⚠️ BLAST finished but ThereAreHits=no")
+                    return []
+                if "Status=FAILED" in text or "Status=UNKNOWN" in text:
+                    error("❌ BLAST failed or unknown RID")
+                    return []
 
-        if not blast_btn:
-            error("❌ Could not find BLAST button.")
-            return []
-
-        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", blast_btn)
-        time.sleep(0.2)
-        driver.execute_script("arguments[0].click();", blast_btn)
-
-        # 7) Extract RID from URL or HTML
-        rid = None
-        t0 = time.time()
-        while time.time() - t0 < 60:
-            cur_url = driver.current_url
-            m = re.search(r"[&?]RID=([A-Z0-9]+)", cur_url)
-            if m:
-                rid = m.group(1)
-                break
-
-            html = driver.page_source
-            m = re.search(r"Request ID[^A-Z0-9]*([A-Z0-9]{11,12})", html)
-            if m:
-                rid = m.group(1)
-                break
-
-            time.sleep(0.5)
-
-        if not rid:
-            error("❌ Could not find RID.")
-            return []
-
-        rid_clean = rid[4:] if rid.startswith("RID-") else rid
-
-        # 8) Poll status via requests
-        status_url = (
-            "https://blast.ncbi.nlm.nih.gov/Blast.cgi"
-            f"?CMD=Get&RID={rid_clean}&FORMAT_OBJECT=SearchInfo"
-        )
-
-        for _ in range(600):
-            resp = requests.get(status_url, timeout=30)
-            text = resp.text
-
-            if "Status=READY" in text and "ThereAreHits=yes" in text:
-                break
-            if "Status=READY" in text and "ThereAreHits=no" in text:
-                warn("⚠️ BLAST finished but ThereAreHits=no")
-                return []
-            if "Status=FAILED" in text or "Status=UNKNOWN" in text:
-                error("❌ BLAST failed or unknown RID")
+                await page.wait_for_timeout(1000)
+            else:
+                error("⚠️ Timeout waiting for BLAST results.")
                 return []
 
-            time.sleep(1)
-        else:
-            error("⚠️ Timeout waiting for BLAST results.")
-            return []
+            # 9) Download CSV
+            download_url = (
+                "https://blast.ncbi.nlm.nih.gov/Blast.cgi"
+                f"?RESULTS_FILE=on&RID={rid_clean}"
+                f"&FORMAT_TYPE=CSV"
+                f"&DESCRIPTIONS={dropdown_value}"
+                f"&ALIGNMENT_VIEW=Tabular"
+                f"&CMD=Get"
+            )
 
-        # 9) Download CSV
-        download_url = (
-            "https://blast.ncbi.nlm.nih.gov/Blast.cgi"
-            f"?RESULTS_FILE=on&RID={rid_clean}"
-            f"&FORMAT_TYPE=CSV"
-            f"&DESCRIPTIONS={dropdown_value}"
-            f"&ALIGNMENT_VIEW=Tabular"
-            f"&CMD=Get"
-        )
+            resp = requests.get(download_url, timeout=60)
+            content = resp.text.strip()
+            if not content:
+                error("❌ Empty BLAST CSV download.")
+                return []
 
-        resp = requests.get(download_url, timeout=60)
-        content = resp.text.strip()
-        if not content:
-            error("❌ Empty BLAST CSV download.")
-            return []
+            lines = [l for l in content.split("\n") if l and not l.startswith("#")]
+            lines = lines[:max_targets]
 
-        lines = [l for l in content.split("\n") if l and not l.startswith("#")]
-        lines = lines[:max_targets]
+            hits: list[str] = []
+            for line in lines:
+                cols = line.split(",")
+                if len(cols) >= 2:
+                    hits.append(cols[1].strip().strip('"'))
 
-        hits: list[str] = []
-        for line in lines:
-            cols = line.split(",")
-            if len(cols) >= 2:
-                hits.append(cols[1].strip().strip('"'))
+            return hits
 
-        return hits
+        finally:
+            await browser.close()
 
-    finally:
-        if driver is not None:
-            try:
-                driver.quit()
-            except Exception:
-                pass
+
 
 
 def prepare_single_query_input(
@@ -306,7 +238,8 @@ def prepare_single_query_input(
             error(f"Could not fetch FASTA for query '{query}'.")
             return None
 
-    hits = _run_remote_blast(fasta_txt, evalue=evalue, max_targets=max_targets, db=db)
+    # Run async BLAST in synchronous context
+    hits = asyncio.run(_run_remote_blast(fasta_txt, evalue=evalue, max_targets=max_targets, db=db))
     if not hits:
         error("Remote BLAST returned no hits; aborting.")
         return None

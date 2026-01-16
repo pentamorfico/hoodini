@@ -57,7 +57,8 @@ COPY src/ ./src/
 # Install the package in the env (no need for conda init)
 RUN /bin/bash -lc "source /opt/conda/etc/profile.d/conda.sh && \
     conda activate hoodini && \
-    pip install --no-cache-dir -e ."
+    pip install --no-cache-dir -e . && \
+    playwright install firefox"
 
 # Set environment variables
 ENV PATH="/opt/conda/envs/hoodini/bin:${PATH}"
