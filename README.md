@@ -14,6 +14,17 @@
     <img src="docs/hoodini-viz-export - 2026-01-14T051133.869.svg" alt="Hoodini Visualization Example" width="800"/>
 </p>
 
+
+<div align = center>
+
+[<kbd> <br> Click here for an interactive demo <br> </kbd>][KBD]
+
+</div>
+
+
+[KBD]: https://storage.hoodini.bio/hoodini-demo.html
+
+
 ## Introduction
 
 This README documents installation, the command-line interface and all available options, produced output files, and a few examples to get you started.
