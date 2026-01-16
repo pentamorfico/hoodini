@@ -10,339 +10,218 @@
 
 ---
 
+<p align="center">
+    <img src="docs/hoodini-viz-export - 2026-01-14T051133.869.svg" alt="Hoodini Visualization Example" width="800"/>
+</p>
 
 ## Introduction
 
 This README documents installation, the command-line interface and all available options, produced output files, and a few examples to get you started.
 
-## Installation
+### Key Features
 
-Before using `hoodini`, ensure you have Python and required system tools installed. The project provides an example Conda environment in `environment.yml`. It is advised to create the environment with mamba instead of conda due to beter conflict resolution. 
+- **Automated data retrieval**: Fetches assemblies and annotations directly from NCBI using protein or nucleotide accessions
+- **Neighborhood extraction**: Extracts configurable genomic windows around target genes
+- **Protein clustering**: Groups homologous proteins across neighborhoods for synteny comparison  
+- **Pairwise comparisons**: Computes protein (AAI) and nucleotide (ANI) similarities
+- **Tree construction**: Builds phylogenetic trees from AAI or ANI distances
+- **Defense system annotation**: Integrates PADLOC, DefenseFinder, CCTyper for antiphage systems
+- **Mobile element detection**: Identifies prophages and plasmids via geNomad
+- **Interactive visualization**: Generates self-contained HTML viewer with aligned neighborhoods and trees
 
-Suggested install steps (adapt channel list to your environment):
+### Use Cases
+
+- Comparative analysis of gene neighborhoods across thousands of genomes
+- Evolutionary analysis of genomic islands, defense systems, and mobile elements
+- Identification of conserved gene clusters and syntenic regions
+- Phylogenetic contextualization of protein families
+
+## Quick Start
 
 ```bash
-# create and activate environment (example)
+# Single protein query
+hoodini run --input WP_012345678.1 --output results
+
+# With protein comparisons and phylogenetic tree
+hoodini run --input proteins.txt --output results --prot-links --tree-mode aai_tree
+
+# Full analysis with annotations
+hoodini run --input proteins.txt --output results \
+  --prot-links --tree-mode aai_tree \
+  --padloc --deffinder --cctyper --genomad \
+  --num-threads 16
+```
+
+## Installation
+
+### Mamba
+
+```bash
 mamba env create -f environment.yml
-# install python-only extras (src-layout)
+mamba activate hoodini
 pip install -e .
-# download hoodini external databases
 hoodini download databases
 ```
 
-### Multi-backend Installation Support
-
-`hoodini` supports installation and execution on **conda**, **mamba**, and **pixi** package managers. The environment contains all necessary dependencies including Firefox for remote BLAST automation.
-
-#### Conda / Mamba
+### Pixi
 
 ```bash
-# Create environment
-mamba env create -f environment.yml
-mamba activate hoodini
-
-# Install package in editable mode
-pip install -e .
-
-# Install Firefox for remote BLAST automation
-playwright install firefox
-
-# Verify browser automation setup
-python -c "from hoodini.utils.runtime_env import verify_gtk_availability; print('GTK3 available:', verify_gtk_availability())"
-```
-
-#### Pixi
-
-```bash
-# Install and activate with pixi
 pixi install
 pixi shell
-
-# Install Firefox for remote BLAST automation (inside pixi shell)
-playwright install firefox
-
-# Or without activation shell
-pixi run playwright install firefox
-pixi run hoodini run --input accessions.txt --output results
+hoodini download databases
 ```
 
-#### Docker
-
-A Dockerfile is provided for containerized deployments:
+### Docker
 
 ```bash
-# Build image
-docker build -t hoodini:latest .
+docker volume create hoodini-data
 
-# Run in container
-docker run --rm -v /data:/data hoodini:latest hoodini run --input /data/accessions.txt --output /data/results
+# Download databases (first time only)
+docker run --rm -v hoodini-data:/app/src/hoodini/data \
+  pentamorfico/hoodini:latest hoodini download databases
+
+# Run analysis
+docker run --rm -v hoodini-data:/app/src/hoodini/data -v $(pwd):/work \
+  pentamorfico/hoodini:latest hoodini run --input /work/proteins.txt --output /work/results
 ```
 
-### Browser Automation Setup
+## Usage
 
-`hoodini` uses Playwright Firefox for remote BLAST queries. The setup is mostly automatic:
+```
+hoodini run      Run the main pipeline
+hoodini download Download required databases
+```
 
-- **Firefox binary**: Automatically installed on first import (via `playwright install firefox`)
-- **GTK3/X11 dependencies**: Provided by conda/mamba/pixi `environment.yml`
-- **Library path setup**: Automatically detected from active environment via `runtime_env.py`
+### Input Options
 
-**Troubleshooting browser issues:**
+| Option | Description |
+|--------|-------------|
+| `--input ID\|FILE` | Single accession (e.g., `WP_012345678.1`) or file with one accession per line |
+| `--inputsheet FILE` | TSV with accessions and custom metadata columns |
 
-If you encounter "Could not find GTK3 libraries" errors:
+### Output Options
+
+| Option | Description |
+|--------|-------------|
+| `--output DIR` | Output directory |
+| `--force` | Overwrite existing output |
+| `--keep` | Retain intermediate files |
+
+### Neighborhood Extraction
+
+| Option | Description |
+|--------|-------------|
+| `--win-mode` | `win_genes` (gene count) or `win_nts` (nucleotide distance) |
+| `--win INT` | Window size (default: 10 genes or 10000 nt) |
+| `--min-win INT` | Minimum genes required per side |
+| `--sorfs` | Re-annotate small ORFs in extracted regions |
+
+### Pairwise Comparisons
+
+| Option | Description |
+|--------|-------------|
+| `--prot-links` | Compute all-vs-all protein similarities |
+| `--nt-links` | Compute pairwise nucleotide alignments |
+| `--nt-aln-mode` | Alignment method: `blastn`, `fastani`, `minimap2` |
+| `--clust-method` | Protein clustering algorithm |
+
+### Tree Construction
+
+| Option | Description |
+|--------|-------------|
+| `--tree-mode` | `aai_tree` (amino acid identity) or `ani_tree` (nucleotide identity) |
+| `--tree-file FILE` | Use precomputed Newick tree |
+| `--aai-mode` | Tree algorithm: `nj` (neighbor-joining) or `hyper` |
+| `--aai-subset-mode` | Proteins for tree: `target_region`, `target_prot`, `window` |
+
+### Functional Annotations
+
+| Option | Description |
+|--------|-------------|
+| `--padloc` | Detect defense systems with PADLOC |
+| `--deffinder` | Detect defense systems with DefenseFinder |
+| `--cctyper` | Type CRISPR-Cas systems |
+| `--genomad` | Identify mobile genetic elements |
+| `--ncrna` | Predict non-coding RNAs with Infernal |
+| `--domains LIST` | Search domain databases (comma-separated) |
+
+### Performance
+
+| Option | Description |
+|--------|-------------|
+| `--num-threads INT` | Parallel threads (default: 4) |
+| `--max-concurrent-downloads INT` | Concurrent NCBI downloads |
+| `--api-key KEY` | NCBI API key (increases rate limits) |
+
+## Output Structure
+
+```
+results/
+├── assembly_list.txt           # Downloaded assembly accessions
+├── assembly_folder/            # Raw assemblies (*.gbff / *.fna, *.gff)
+├── all_neigh.tsv               # All neighborhood coordinates
+├── neighborhood/
+│   └── neighborhoods.fasta     # Extracted neighborhood sequences
+├── target_prots.fasta          # Target proteins for clustering
+├── target_prots.aln            # Protein alignment (if clustering)
+├── pairwise_aa.tsv             # Protein similarity hits (if --prot-links)
+├── aai_matrix.tsv              # AAI distance matrix (if --tree-mode aai_tree)
+├── nt_links.tsv                # Nucleotide alignments (if --nt-links)
+├── ani_matrix.tsv              # ANI distance matrix (if --tree-mode ani_tree)
+├── tree.nwk                    # Phylogenetic tree
+├── records.csv                 # Input records with metadata
+├── domains.tsv                 # Domain annotations (if --domains)
+├── cctyper/                    # CRISPR-Cas results (if --cctyper)
+├── ncrna/                      # ncRNA predictions (if --ncrna)
+├── genomad/                    # MGE predictions (if --genomad)
+└── hoodini-viz/                # Visualization bundle
+    ├── hoodini-viz.html        # Self-contained interactive viewer
+    ├── tree.nwk                # Newick tree copy
+    ├── tsv/                    # Human-readable tables
+    │   ├── gff.gff
+    │   ├── hoods.txt
+    │   ├── protein_metadata.txt
+    │   ├── tree_metadata.txt
+    │   ├── protein_links.txt
+    │   ├── nucleotide_links.txt
+    │   ├── domains.txt         # (if --domains)
+    │   └── ncrna_metadata.txt  # (if --ncrna)
+    └── parquet/                # Parquet format for viewer
+```
+
+## Database Setup
 
 ```bash
-# Verify environment has required libs
-python -c "from hoodini.utils.runtime_env import find_candidate_lib_dirs, verify_gtk_availability; \
-print('Lib dirs:', find_candidate_lib_dirs()); \
-print('GTK3:', verify_gtk_availability())"
-
-# If Firefox binary missing, manually install:
-playwright install firefox
-
-# If missing GTK3, reinstall environment
-mamba env remove -n hoodini
-mamba env create -f environment.yml -n hoodini
+hoodini download databases        # Download all required databases
+hoodini download assembly_summary # NCBI assembly index only
+hoodini download metacerberus     # Domain HMM profiles
 ```
 
+## Configuration
 
+Parameters can be set via CLI flags, TOML config file, or built-in defaults.  
+Priority: CLI flags > config file > defaults.
 
-## Quick start
-
-Run the core pipeline using the CLI entrypoint. The package exposes a `hoodini` console script. The primary command is `run`:
+```toml
+# config.toml
+[run]
+num_threads = 8
+win_mode = "win_genes"
+win = 10
+prot_links = true
+tree_mode = "aai_tree"
+```
 
 ```bash
-hoodini run --input path/to/accessions.txt --output results_dir --prot-links --tree-mode aai_tree
+hoodini run --config config.toml --input proteins.txt --output results
 ```
 
-Or provide a TOML config and override specific values on the command line:
+## Citation
 
-```bash
-hoodini run --config myparams.toml --inputsheet inputs.tsv --force
-```
+If you use hoodini in your research, please cite:
 
-## How configuration is resolved
-
-hoodini merges parameters from three places (lowest to highest precedence):
-
-- built-in defaults (`hoodini/config/defaults.toml`)
-- user-provided TOML via `--config`
-- explicit CLI flags
-
-This means CLI flags override the config file which overrides packaged defaults.
-
-## Commands and options
-
-This section lists the available top-level commands and all options discovered in the codebase.
-
-Top-level command group: `hoodini`
-
-Primary pipeline command: `hoodini run`
-
-Options for `hoodini run` (all flags may also be present in a TOML config and are merged as described above):
-
-- `--config <file>`
-   - TOML config file to load parameters from (merged with defaults; CLI overrides this file).
-
-- `--input <path>`
-   - Path to a single-column input file (mutually exclusive with `--inputsheet`). Must exist.
-
-- `--inputsheet <path>`
-   - Path to a TSV input file with additional columns (mutually exclusive with `--input`). Must exist.
-
-- `--output <folder>`
-   - Output folder name. If omitted, defaults from packaged config will be used.
-
-- `--max-concurrent-downloads <int>`
-   - Maximum concurrent downloads for fetching files from NCBI.
-
-- `--api-key` or `--api-key <key>`
-   - NCBI API key (also read from `NCBI_API_KEY` environment variable where supported).
-
-- `--num-threads <int>`
-   - Number of worker threads to use where parallelism is supported.
-
-- `--assembly-db <path>`
-   - Path to an assembly database (precomputed index / parquet file).
-
-- `--img-db <path>` and `--img-nuc <path>`
-   - Path(s) to local IMG database files (protein and nucleotide variants) used for annotation.
-
-- `--prot-links` (flag)
-   - Run all-vs-all pairwise protein comparisons (produces `protein_links.txt`).
-
-- `--nt-links` (flag)
-   - Run pairwise nucleotide comparisons (produces `nucleotide_links.txt`).
-
-- `--ani-mode <mode>`
-   - ANI calculation mode used when building `ani_tree` (only used if `--tree-mode ani_tree`).
-
-- `--nt-aln-mode <mode>`
-   - Choice of nucleotide alignment engine for pairwise comparisons. Valid choices: `blastn`, `fastani`, `minimap2`, `intergenic_blastn`.
-
-- `--blast <file>`
-   - BLAST query file to use for annotation steps.
-
-- `--cand-mode <mode>`
-   - Mode for selecting IPG (representative protein) candidates during IPG parsing.
-
-- `--clust-method <method>`
-   - Protein clustering method (controls `cluster_proteins` behavior).
-
-- `--win-mode <win_nts|win_genes>`
-   - Window mode for neighborhoods: nucleotide window (`win_nts`) or gene window (`win_genes`).
-
-- `--win <int>`
-   - Window size (number of genes or nucleotides depending on `--win-mode`).
-
-- `--min-win <int>`
-   - Minimum window size on each side of the target.
-
-- `--min-win-type <total|upstream|downstream|both>`
-   - Type of min window constraint.
-
-- `--tree-mode <mode>`
-   - Controls tree construction behavior. Examples seen in code: `ani_tree`, `aai_tree`, or other supported modes.
-
-- `--tree-file <path>`
-   - Path to a precomputed tree file (Newick). If provided, hoodini may use this instead of rebuilding a tree.
-
-- `--aai-mode <mode>`
-   - Mode for AAI tree construction (e.g., `nj` or `hyper`). Note: certain modes may be rejected by the AAI pipeline.
-
-- `--aai-subset-mode <mode>`
-   - Subset mode used for selecting sequences for AAI tree construction (e.g., `target_region`, `target_prot`, `window`).
-
-- `--padloc` (flag)
-   - Run PADLOC to detect antiphage defense systems and merge annotations into the protein table.
-
-- `--deffinder` (flag)
-   - Run DefenseFinder for antiphage defense detection and merge results.
-
-- `--ncrna` (flag)
-   - Run Infernal to predict non-coding RNAs in neighborhoods.
-
-- `--cctyper` (flag)
-   - Run CCtyper for CRISPR-Cas system detection.
-
-- `--genomad` (flag)
-   - Run GenoMAD for mobile genetic element identification.
-
-   - Identify anti-defense (ACR) genes.
-
-   - Annotate proteins with PHROGs.
-
-- `--sorfs` (flag)
-   - Reannotate small open reading frames (sORFs) during assembly parsing/clustering.
-
-- `--domains <comma-separated-list>`
-   - Comma-separated list of MetaCerberus domain database names for domain annotation (validated by the CLI).
-
-- `--min-prevalence <float>`
-   - Minimum prevalence threshold for coloring/highlighting genes in downstream visualizations (used when computing proteome similarity).
-
-- `--img` and `--img-metadata` <path>
-   - Paths to IMG protein DB files and optional metadata for richer annotation.
-
-- `--keep` (flag)
-   - Keep intermediate temporary files (do not delete them at the end of the run).
-
-- `--force` (flag)
-   - Overwrite existing output folder if it already exists.
-
-Notes about `run` behavior:
-
-- The pipeline requires either `--input` or `--inputsheet`. If neither is provided, the CLI raises a usage error.
-- The code merges defaults, an optional TOML config file, and CLI flags into a single runtime configuration object.
-
-Subcommands: `hoodini download` group
-
-The `download` group contains helpers to fetch and update local databases used by hoodini.
-
-- `hoodini download assembly_summary`
-   - Download or update the precomputed `assembly_summary.parquet` NCBI assembly database used for mapping accessions.
-
-- `hoodini download metacerberus [dbs] [--force]`
-   - Download MetaCerberus HMM/TSV database files. Calling with no argument or `all` lists or downloads as configured.
-
-- `hoodini download type_dive`
-   - Download and normalize DSMZ BacDive and PhageDive databases.
-
-- `hoodini download contig_lengths [--api-key <key>] [--skip-assembly-summary]`
-   - Download missing NCBI contig length records and refresh the precomputed list. `--api-key` overrides `NCBI_API_KEY` env var.
-
-Utility commands: `hoodini utils`
-
-- `hoodini utils nuc2asmlen <input_file> [--output <file>]`
-   - Fetch assembly and contig length metadata for a list of nuccore/contig accessions; prints TSV to stdout or saves to `--output`.
-
-- `hoodini utils prefetch_links <input_file> [--output <file>] [--kinds <list>]`
-   - Generate a prefetched link table for a list of assemblies (useful to avoid repeated network requests). `--kinds` is a comma-separated list of file kinds.
-
-## Output files written by the pipeline
-
-The pipeline writes a small set of standardized output files to the `--output` folder. The following files are produced or placeholder files are created so downstream tools can rely on them:
-
-- `gff.gff` — combined GFF for parsed assemblies.
-- `hoods.txt` — hoods table with `hood_id`, `seqid`, `start`, `end`, `align_gene` for each neighborhood.
-- `protein_metadata.txt` — protein table containing `gene_id`, `cluster`, `product`, and merged annotations.
-- `tree_metadata.txt` — per-leaf metadata for the tree (leaf ids, etc.).
-- `tree.nwk` — Newick-formatted tree string when a tree is produced or provided.
-- `nucleotide_links.txt` — pairwise nucleotide alignment links (placeholder header-only file is written if nucleotide links are not produced).
-- `protein_links.txt` — pairwise protein links (placeholder header-only file is written if protein comparisons are not run).
-
-Extra annotations (PADLOC, DefenseFinder, PHROGs, etc.) are merged into `protein_metadata.txt` when requested.
-
-### Visualization bundle (`hoodini-viz/`)
-When the pipeline renders the interactive viewer, files are organized under `results/hoodini-viz/`:
-
-- Root: `tree.nwk` and `hoodini-viz.html`.
-- `tsv/`: `gff.gff`, `hoods.txt`, `protein_metadata.txt`, `tree_metadata.txt`, `nucleotide_links.txt`, `protein_links.txt`, and optional domain tables when requested.
-- `parquet/`: columnar equivalents used by the viewer (`gff.parquet`, `hoods.parquet`, `protein_metadata.parquet`, `tree_metadata.parquet`, `nucleotide_links.parquet`, `protein_links.parquet`, and optional `domains.parquet`, `domains_metadata.parquet`).
-
-## Examples
-
-Basic run (protein links + AAI tree):
-
-```bash
-hoodini run --input accessions.txt --output hood_results --prot-links --tree-mode aai_tree --num-threads 8
-```
-
-Run only neighborhood extraction and annotation (no pairwise comparisons):
-
-```bash
-hoodini run --input accessions.txt --output hood_neigh --num-threads 4 --padloc --ncrna --cctyper
-```
-
-Use a config file and override one value:
-
-```bash
-hoodini run --config myparams.toml --inputsheet inputs.tsv --force
-```
-
-Download helper:
-
-```bash
-hoodini download assembly_summary
-hoodini download metacerberus HMMs --force
-```
-
-Utility example:
-
-```bash
-hoodini utils nuc2asmlen contigs.txt --output contig_lengths.tsv
-hoodini utils prefetch_links assemblies.txt --kinds gbff,gff,fna
-```
-
-## Troubleshooting & notes
-
-- If you see unexpected errors while downloading from NCBI, ensure your `NCBI_API_KEY` is set or pass `--api-key`.
-- Network-heavy operations benefit from `--max-concurrent-downloads` tuning and adequate `--num-threads`.
-- For reproducible runs, pin the versions in `environment.yml` or use the provided `pyproject.toml`/packaging metadata.
-
-## Contributing
-
-See `TODO.md` and project tests for guidance on contributing. The core CLI lives in `hoodini/cli.py` and additional tools are in `hoodini/extra_tools/` and `hoodini/download/`.
+> [Citation pending publication]
 
 ## License
 
-See `hoodini.egg-info/PKG-INFO` for packaged metadata and licensing information.
+See LICENSE file.

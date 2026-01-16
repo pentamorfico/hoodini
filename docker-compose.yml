@@ -2,12 +2,15 @@ version: '3.8'
 
 services:
   hoodini:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: hoodini:latest
+    image: pentamorfico/hoodini:latest
+    pull_policy: always
     volumes:
-      # Mount current directory as working directory
+      # Persist downloaded databases
+      - hoodini-data:/app/src/hoodini/data
+      # Mount current directory as working directory/output
       - .:/work
     environment:
       - PYTHONUNBUFFERED=1
+
+volumes:
+  hoodini-data:
