@@ -239,6 +239,18 @@ If you use hoodini in your research, please cite:
 
 > [Citation pending publication]
 
+## Acknowledgments
+
+Hoodini is heavily inspired by the work of several excellent tools in the field. We encourage you to check them out:
+
+- [GCsnap](https://github.com/JoanaMPereira/GCsnap) — Gene context visualization
+- [FlaGs](https://github.com/GCA-VH-lab/FlaGs) — Flanking genes analysis
+- [Taxonium](https://github.com/theosanderson/taxonium) — Large tree visualization
+- [clinker & clustermap.js](https://github.com/gamcil/clinker) — Gene cluster comparison
+- [gggenes](https://github.com/wilkox/gggenes) — Gene arrow maps in R
+- [gggenomes](https://github.com/thackl/gggenomes) — Comparative genomics visualization
+- [geneviewer](https://github.com/nvelden/geneviewer) — Interactive gene visualization
+
 ## License
 
 See LICENSE file.
