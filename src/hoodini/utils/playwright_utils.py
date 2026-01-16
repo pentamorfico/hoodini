@@ -17,16 +17,16 @@ from .runtime_env import apply_ld_library_path
 async def get_browser_context() -> AsyncGenerator[Page, None]:
     """
     Context manager for async Playwright browser with proper environment setup.
-    
+
     Automatically:
     - Sets up LD_LIBRARY_PATH for conda/pixi/mamba environments
     - Launches Firefox browser with appropriate arguments
     - Provides a page context for automation
     - Cleans up browser on exit
-    
+
     Yields:
         playwright.async_api.Page: Browser page for automation
-        
+
     Example:
         >>> async with get_browser_context() as page:
         ...     await page.goto("https://example.com")
@@ -34,7 +34,7 @@ async def get_browser_context() -> AsyncGenerator[Page, None]:
     """
     # Apply environment setup before launching browser
     apply_ld_library_path()
-    
+
     async with async_playwright() as p:
         browser = await p.firefox.launch(headless=True)
         page = await browser.new_page()
@@ -47,15 +47,15 @@ async def get_browser_context() -> AsyncGenerator[Page, None]:
 async def open_blast_page(url: str) -> tuple[Page, str | None]:
     """
     Open NCBI BLAST page and return page object for automation.
-    
+
     This is a utility function for testing the Playwright setup.
-    
+
     Args:
         url: The NCBI BLAST URL to open
-        
+
     Returns:
         Tuple of (page object, error message if any)
-        
+
     Example:
         >>> page, error = await open_blast_page("https://blast.ncbi.nlm.nih.gov/...")
         >>> if not error:
