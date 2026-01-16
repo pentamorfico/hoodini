@@ -21,7 +21,7 @@ RUN mamba env create -f environment.yml && \
 # Final stage
 FROM condaforge/mambaforge:latest
 
-# Install build essentials for packages that need compilation
+# Install build essentials (Firefox from mamba brings GUI/X11 deps)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \

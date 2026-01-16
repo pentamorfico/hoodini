@@ -91,10 +91,7 @@ def _run_remote_blast(
     dropdown_value = _pick_dropdown_value(max_targets)
 
     if sync_playwright is None:
-        error(
-            "Playwright is required for remote BLAST; install with `pip install playwright` "
-            "and run `playwright install chromium`."
-        )
+        error("Playwright is required for remote BLAST; install with `pip install playwright`.")
         return []
 
     info("🚀 BLAST Search")
@@ -106,7 +103,7 @@ def _run_remote_blast(
     info("")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.firefox.launch(headless=True)
         page = browser.new_page(viewport={"width": 1920, "height": 1080})
 
         # 1. LOAD PAGE

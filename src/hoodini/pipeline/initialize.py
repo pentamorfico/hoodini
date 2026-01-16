@@ -1,5 +1,6 @@
 import datetime
 import shutil
+import subprocess
 import sys
 from importlib.resources import files
 from pathlib import Path
@@ -148,47 +149,34 @@ def check_assembly_db() -> None:
 
 def check_playwright_browser() -> None:
     """
-    Check if Playwright Chromium is installed and install it if missing.
-    Verifies the actual executable exists, not just the directory.
+    Ensure Playwright Firefox is installed.
+    Runs `playwright install firefox` which is idempotent.
     """
-    import subprocess
-    from pathlib import Path
-
     try:
-        # Standard playwright browser cache locations
-        home = Path.home()
-        possible_paths = [
-            home / ".cache" / "ms-playwright",  # Linux
-            home / "Library" / "Caches" / "ms-playwright",  # macOS
-            home / "AppData" / "Local" / "ms-playwright",  # Windows
-        ]
-
-        # Check if chromium executable actually exists (not just the directory)
-        for cache_path in possible_paths:
-            if cache_path.exists():
-                # Look for actual chrome executable inside chromium dirs
-                for chromium_dir in cache_path.glob("chromium*"):
-                    # Check for headless shell executable (Linux/macOS)
-                    executables = (
-                        list(chromium_dir.glob("**/chrome-headless-shell"))
-                        + list(chromium_dir.glob("**/chrome"))
-                        + list(chromium_dir.glob("**/chromium"))
-                    )
-                    if executables and executables[0].is_file():
-                        return  # Already installed and executable exists
-
-        info("🎭 Playwright Chromium not found. Installing (one-time setup)...")
-        subprocess.run(
-            ["playwright", "install", "--only-shell", "chromium"],
-            check=True,
-            timeout=180,
+        from playwright.sync_api import sync_playwright  # noqa: F401
+    except ImportError:
+        error(
+            "Playwright not found. This should have been installed with hoodini. "
+            "Try reinstalling: pip install -e ."
         )
-        info("✅ Playwright Chromium installed successfully")
+        return
 
-    except subprocess.TimeoutExpired:
-        warn("Playwright install timed out. Run 'playwright install chromium' manually.")
-    except Exception as e:
-        warn(f"Could not check/install Playwright: {e}")
+    # Install Firefox (idempotent - does nothing if already installed)
+    info("🔍 Checking Firefox for Playwright...")
+    result = subprocess.run(
+        [sys.executable, "-m", "playwright", "install", "firefox"],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode == 0:
+        # Check if it actually downloaded or was already present
+        if "already exists" in result.stdout or "already installed" in result.stdout:
+            info("✔️  Firefox already installed.")
+        else:
+            info("✔️  Firefox installed successfully.")
+    else:
+        error(f"Failed to install Firefox: {result.stderr}")
 
 
 def _prompt_yes_no(prompt_text: str, default: str = "no") -> bool:

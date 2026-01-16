@@ -23,4 +23,5 @@ dependencies:
   - infernal
   - famsa
   - veryfasttree
+  - firefox
 
