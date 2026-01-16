@@ -280,9 +280,11 @@ def uniprot2ncbi(df: pl.DataFrame) -> pl.DataFrame:
     if not required_cols.issubset(set(df.columns)):
         return df
 
+    # Cast protein_id to Utf8 to handle Null-type columns safely
+    protein_id_str = df["protein_id"].cast(pl.Utf8, strict=False)
     mask = (
         df["uniprot_id"].is_not_null()
-        & (df["protein_id"].is_null() | (df["protein_id"] == ""))
+        & (protein_id_str.is_null() | (protein_id_str == ""))
         & df["gff_path"].is_null()
         & df["faa_path"].is_null()
     )
