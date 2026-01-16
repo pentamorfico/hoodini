@@ -27,6 +27,12 @@
 
 ## Introduction
 
+Hoodini’s primary goal is to make large-scale genomic context analysis fast, practical, and accessible. It’s built to fetch and process thousands of gene neighborhoods in minutes, turning what used to be hours or days of manual work into an interactive workflow.
+
+With GPU-accelerated, real-time interactive  visualization, Hoodini lets biologists across disciplines explore bacterial operons, defense systems, and mobile genetic elements at scale, revealing patterns, co-localization signals, and evolutionary signatures that drive discovery and deepen our understanding of prokaryotic genomes.
+
+Beyond exploration, Hoodini offers extensive customization options (including flexible styling, multiple palettes, and fine-grained layout controls) to generate publication-ready, high-quality figures exported for presentations, manuscripts, and supplementary materials.
+
 This README documents installation, the command-line interface and all available options, produced output files, and a few examples to get you started.
 
 ### Key Features
