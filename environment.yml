@@ -36,5 +36,5 @@ dependencies:
   - pango
   - gdk-pixbuf
   - fontconfig
-  - freetype
+  - alsa-lib
 

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 import subprocess
+import time
 from pathlib import Path
 
 import requests
-from playwright.async_api import async_playwright
+from playwright.sync_api import sync_playwright
 
 from hoodini.utils.browser_setup import ensure_playwright_firefox
 from hoodini.utils.logging_utils import error, info, warn
@@ -78,7 +78,8 @@ def _fetch_fasta_for_id(prot_id: str) -> str:
 
 
 
-async def _run_remote_blast(
+
+def _run_remote_blast(
     fasta_text: str,
     evalue: float,
     max_targets: int,
@@ -93,6 +94,7 @@ async def _run_remote_blast(
         return []
 
     info("🚀 BLAST Search (Firefox + Playwright)")
+    info(f"   Query: {fasta_text[:50]}...")
     info(f"   Max sequences: {max_targets}")
     if dropdown_value != max_targets:
         info(f"   (using dropdown: {dropdown_value}, will limit download to {max_targets})")
@@ -102,115 +104,105 @@ async def _run_remote_blast(
     # Set up environment for Playwright Firefox in conda/pixi/mamba
     apply_ld_library_path()
 
-    async with async_playwright() as p:
-        browser = await p.firefox.launch(headless=True)
-        page = await browser.new_page()
+    with sync_playwright() as p:
+        browser = p.firefox.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1920, "height": 1080})
 
-        try:
-            # 1) Open BLAST proteins page
-            await page.goto("https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE=Proteins")
+        # 1. LOAD PAGE
+        url = "https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE=Proteins"
+        page.goto(url, wait_until="networkidle")
 
-            # 2) Fill textarea with FASTA
-            await page.fill('textarea[aria-label*="accession" i]', fasta_text)
+        # 2. FILL SEQUENCE
+        textarea = page.locator('textarea[aria-label*="accession"]').or_(
+            page.locator('textarea').first
+        )
+        textarea.wait_for(state="visible")
+        textarea.fill(fasta_text)
 
-            # 3) Try to expand Algorithm parameters
-            try:
-                await page.click("summary:has-text('Algorithm parameters')")
-                await page.wait_for_timeout(300)
-            except Exception:
-                pass
+        # 3. EXPAND "Algorithm parameters" section
+        algo_params = page.locator('text=Algorithm parameters').first
+        algo_params.click()
+        time.sleep(0.5)
 
-            # 4) Set MAX_NUM_SEQ dropdown
-            try:
-                await page.select_option('select[name="MAX_NUM_SEQ"]', value=str(dropdown_value))
-            except Exception as e:
-                warn(f"Could not set MAX_NUM_SEQ: {e}")
+        # 4. SET MAX TARGET SEQUENCES (use dropdown_value)
+        max_seqs_select = page.locator('select[name="MAX_NUM_SEQ"]')
+        max_seqs_select.wait_for(state="visible")
+        max_seqs_select.select_option(str(dropdown_value))
 
-            # 5) Set e-value
-            try:
-                await page.fill('input[name="EXPECT"]', str(evalue))
-            except Exception as e:
-                warn(f"Could not set EXPECT: {e}")
+        # 5. SET E-VALUE
+        evalue_input = page.locator('input[name="EXPECT"]')
+        evalue_input.fill(str(evalue))
 
-            # 6) Click BLAST button
-            await page.click('input[value="BLAST"]')
+        # 6. CLICK BLAST BUTTON
+        blast_btn = page.locator('#blastButton1 input[value="BLAST"]')
+        blast_btn.wait_for(state="visible")
 
-            # 7) Extract RID from URL or HTML
-            rid = None
-            for _ in range(120):  # 60 seconds
-                cur_url = page.url
-                m = re.search(r"[&?]RID=([A-Z0-9]+)", cur_url)
-                if m:
-                    rid = m.group(1)
-                    break
+        with page.expect_navigation(timeout=60000, wait_until="commit"):
+            blast_btn.click(no_wait_after=True)
 
-                content = await page.content()
-                m = re.search(r"Request ID[^A-Z0-9]*([A-Z0-9]{11,12})", content)
-                if m:
-                    rid = m.group(1)
-                    break
+        # 7. EXTRACT RID
+        time.sleep(3)
 
-                await page.wait_for_timeout(500)
+        rid = None
 
-            if not rid:
-                error("❌ Could not find RID.")
+        # Method 1: Get RID from URL parameter
+        current_url = page.url
+        match = re.search(r'[&?]RID=([A-Z0-9]+)', current_url)
+        if match:
+            rid = match.group(1)
+
+        # Method 2: Fallback - look for "Request ID" in page
+        if not rid:
+            content = page.content()
+            match = re.search(r'Request ID[^A-Z0-9]*([A-Z0-9]{11,12})', content)
+            if match:
+                rid = match.group(1)
+
+        if not rid:
+            error("❌ Could not find RID")
+            return []
+
+        # 8. POLL FOR RESULTS
+        rid_clean = rid[4:] if rid.startswith('RID-') else rid
+
+        status_url = f"https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Get&RID={rid_clean}&FORMAT_OBJECT=SearchInfo"
+
+        for i in range(600):
+            resp = requests.get(status_url)
+            text = resp.text
+
+            if "Status=READY" in text and "ThereAreHits=yes" in text:
+                break
+            elif "Status=FAILED" in text or "Status=UNKNOWN" in text:
+                error("❌ BLAST failed or unknown RID")
                 return []
 
-            rid_clean = rid[4:] if rid.startswith("RID-") else rid
+            time.sleep(1)
 
-            # 8) Poll status via requests
-            status_url = (
-                "https://blast.ncbi.nlm.nih.gov/Blast.cgi"
-                f"?CMD=Get&RID={rid_clean}&FORMAT_OBJECT=SearchInfo"
-            )
+        else:
+            error("⚠️ Timeout waiting for BLAST results.")
+            return []
 
-            for _ in range(600):
-                resp = requests.get(status_url, timeout=30)
-                text = resp.text
+        # 9. DOWNLOAD CSV (use dropdown_value to get all, then limit to max_targets)
+        download_url = f"https://blast.ncbi.nlm.nih.gov/Blast.cgi?RESULTS_FILE=on&RID={rid_clean}&FORMAT_TYPE=CSV&DESCRIPTIONS={dropdown_value}&ALIGNMENT_VIEW=Tabular&CMD=Get"
 
-                if "Status=READY" in text and "ThereAreHits=yes" in text:
-                    break
-                if "Status=READY" in text and "ThereAreHits=no" in text:
-                    warn("⚠️ BLAST finished but ThereAreHits=no")
-                    return []
-                if "Status=FAILED" in text or "Status=UNKNOWN" in text:
-                    error("❌ BLAST failed or unknown RID")
-                    return []
+        resp = requests.get(download_url)
+        content = resp.text
 
-                await page.wait_for_timeout(1000)
-            else:
-                error("⚠️ Timeout waiting for BLAST results.")
-                return []
+        # Parse and limit to max_targets
+        all_lines = content.strip().split('\n')
+        data_lines = [l for l in all_lines if l and not l.startswith('#')]
 
-            # 9) Download CSV
-            download_url = (
-                "https://blast.ncbi.nlm.nih.gov/Blast.cgi"
-                f"?RESULTS_FILE=on&RID={rid_clean}"
-                f"&FORMAT_TYPE=CSV"
-                f"&DESCRIPTIONS={dropdown_value}"
-                f"&ALIGNMENT_VIEW=Tabular"
-                f"&CMD=Get"
-            )
+        # Limit data lines to requested max_targets
+        limited_lines = data_lines[:max_targets]
 
-            resp = requests.get(download_url, timeout=60)
-            content = resp.text.strip()
-            if not content:
-                error("❌ Empty BLAST CSV download.")
-                return []
+        hits = []
+        for line in limited_lines:
+            cols = line.split(',')
+            if len(cols) >= 2:
+                hits.append(cols[1].strip().strip('"'))
 
-            lines = [l for l in content.split("\n") if l and not l.startswith("#")]
-            lines = lines[:max_targets]
-
-            hits: list[str] = []
-            for line in lines:
-                cols = line.split(",")
-                if len(cols) >= 2:
-                    hits.append(cols[1].strip().strip('"'))
-
-            return hits
-
-        finally:
-            await browser.close()
+        return hits
 
 
 
@@ -238,8 +230,7 @@ def prepare_single_query_input(
             error(f"Could not fetch FASTA for query '{query}'.")
             return None
 
-    # Run async BLAST in synchronous context
-    hits = asyncio.run(_run_remote_blast(fasta_txt, evalue=evalue, max_targets=max_targets, db=db))
+    hits = _run_remote_blast(fasta_txt, evalue=evalue, max_targets=max_targets, db=db)
     if not hits:
         error("Remote BLAST returned no hits; aborting.")
         return None
