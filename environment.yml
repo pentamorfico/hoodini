@@ -24,4 +24,5 @@ dependencies:
   - famsa
   - veryfasttree
   - firefox
+  - geckodriver
 

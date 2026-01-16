@@ -1,4 +1,12 @@
-"""Utilities to seed the pipeline from a single protein ID or FASTA string."""
+"""
+Remote BLAST seeding via NCBI web UI (Firefox + Selenium) + download via requests.
+
+Requires:
+  - firefox
+  - geckodriver
+  - selenium
+  - requests
+"""
 
 from __future__ import annotations
 
@@ -9,18 +17,6 @@ from pathlib import Path
 
 import requests
 
-try:
-    from selenium import webdriver
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.support import expected_conditions as EC
-    from selenium.webdriver.support.ui import Select, WebDriverWait
-except Exception:  # selenium optional; fallback handled below
-    webdriver = None
-    By = None
-    WebDriverWait = None
-    Select = None
-    EC = None
-
 from hoodini.utils.logging_utils import error, info, warn
 
 UNIPROT_RE = re.compile(r"^[A-NR-Z][0-9][A-Z0-9]{3}[0-9](?:-[0-9]+)?$")
@@ -28,23 +24,10 @@ VALID_MAX_SEQS = [10, 50, 100, 250, 500, 1000, 5000]
 
 
 def _pick_dropdown_value(max_targets: int) -> int:
-    """NCBI dropdown only allows specific target counts; pick the nearest above."""
     for opt in VALID_MAX_SEQS:
         if max_targets <= opt:
             return opt
     return VALID_MAX_SEQS[-1]
-
-
-def _extract_rid(text: str) -> str | None:
-    """Extract RID from URL or HTML text."""
-    # Do NOT use this function; inline the regex instead
-    match = re.search(r"[&?]RID=([A-Z0-9]+)", text)
-    if match:
-        return match.group(1)
-    match = re.search(r"Request ID[^A-Z0-9]*([A-Z0-9]{11,12})", text)
-    if match:
-        return match.group(1)
-    return None
 
 
 def _looks_like_fasta(text: str) -> bool:
@@ -52,8 +35,9 @@ def _looks_like_fasta(text: str) -> bool:
 
 
 def _fetch_fasta_for_id(prot_id: str) -> str:
-    """Fetch protein FASTA from NCBI (efetch) or UniProt."""
     prot_id = prot_id.strip()
+
+    # UniProt first
     if UNIPROT_RE.match(prot_id):
         url = f"https://rest.uniprot.org/uniprotkb/{prot_id}.fasta"
         try:
@@ -64,16 +48,8 @@ def _fetch_fasta_for_id(prot_id: str) -> str:
         except Exception as e:
             warn(f"UniProt fetch error for {prot_id}: {e}")
 
-    # Fallback to NCBI efetch
-    cmd = [
-        "efetch",
-        "-db",
-        "protein",
-        "-id",
-        prot_id,
-        "-format",
-        "fasta",
-    ]
+    # Fallback to NCBI efetch (entrez-direct)
+    cmd = ["efetch", "-db", "protein", "-id", prot_id, "-format", "fasta"]
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=30)
         if result.stdout and result.stdout.strip().startswith(">"):
@@ -85,18 +61,21 @@ def _fetch_fasta_for_id(prot_id: str) -> str:
         return ""
 
 
-def _run_remote_blast(
+def _run_remote_blast_firefox_selenium(
     fasta_text: str,
     evalue: float,
     max_targets: int,
-    db: str = "nr_cluster_seq",
 ) -> list[str]:
-    """Run remote BLAST via NCBI using Selenium + Firefox."""
-    dropdown_value = _pick_dropdown_value(max_targets)
-
-    if webdriver is None:
+    try:
+        from selenium import webdriver
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait, Select
+        from selenium.webdriver.support import expected_conditions as EC
+    except Exception:
         error("Selenium not available. Install with: mamba install -c conda-forge selenium")
         return []
+
+    dropdown_value = _pick_dropdown_value(max_targets)
 
     info("🚀 BLAST Search (Firefox + Selenium)")
     info(f"   Max sequences: {max_targets}")
@@ -288,14 +267,10 @@ def prepare_single_query_input(
     output_dir: Path,
     evalue: float = 1e-5,
     max_targets: int = 100,
-    db: str = "nr_cluster_seq",
 ) -> Path | None:
-    """
-    Given a query (protein ID or FASTA string), run remote BLAST and
-    emit a single-column input list file with the hit IDs.
-    """
     query = query.strip()
     output_dir.mkdir(parents=True, exist_ok=True)
+
     if _looks_like_fasta(query) or re.fullmatch(r"[A-Z*]+", query.replace("\n", ""), re.I):
         info("⚙️  Using provided FASTA/sequence as query.")
         fasta_txt = query if query.startswith(">") else f">query\n{query}\n"
@@ -306,19 +281,22 @@ def prepare_single_query_input(
             error(f"Could not fetch FASTA for query '{query}'.")
             return None
 
-    hits = _run_remote_blast(fasta_txt, evalue=evalue, max_targets=max_targets, db=db)
+    hits = _run_remote_blast_firefox_selenium(
+        fasta_txt,
+        evalue=evalue,
+        max_targets=max_targets,
+    )
     if not hits:
         error("Remote BLAST returned no hits; aborting.")
         return None
 
-    unique_hits = []
-    seen = set()
+    unique_hits: list[str] = []
+    seen: set[str] = set()
     for h in hits:
         if h not in seen:
             unique_hits.append(h)
             seen.add(h)
 
-    # Include the query ID itself if not already present
     if not _looks_like_fasta(query) and query not in seen:
         unique_hits.insert(0, query)
 
@@ -326,3 +304,13 @@ def prepare_single_query_input(
     input_list_path.write_text("\n".join(unique_hits), encoding="utf-8")
     info(f"✔️  Seeded {len(unique_hits)} protein IDs from remote BLAST.")
     return input_list_path
+
+
+if __name__ == "__main__":
+    out = prepare_single_query_input(
+        query="WP_455324848.1",
+        output_dir=Path("blast_seed_test"),
+        evalue=1e-5,
+        max_targets=100,
+    )
+    print(out)

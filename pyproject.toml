@@ -36,7 +36,7 @@ dependencies = [
     "jinja2",
     "mdmparis-defense-finder",
     "mappy",
-    "playwright>=1.40.0",
+	"selenium",
     "nest_asyncio>=1.6.0",
     "cctyper @ git+https://github.com/pentamorfico/CRISPRCasTyper.git",
     "tomli>=2.0.0",

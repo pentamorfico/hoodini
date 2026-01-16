@@ -59,11 +59,6 @@ RUN /bin/bash -lc "source /opt/conda/etc/profile.d/conda.sh && \
     conda activate hoodini && \
     pip install --no-cache-dir -e ."
 
-# Install Playwright Firefox with system dependencies
-RUN /bin/bash -lc "source /opt/conda/etc/profile.d/conda.sh && \
-    conda activate hoodini && \
-    playwright install --with-deps firefox"
-
 # Set environment variables
 ENV PATH="/opt/conda/envs/hoodini/bin:${PATH}"
 ENV CONDA_DEFAULT_ENV=hoodini

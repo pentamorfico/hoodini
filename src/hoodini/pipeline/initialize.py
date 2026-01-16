@@ -1,6 +1,5 @@
 import datetime
 import shutil
-import subprocess
 import sys
 from importlib.resources import files
 from pathlib import Path
@@ -52,7 +51,6 @@ def initialize_inputs(
     """
 
     check_assembly_db()
-    check_playwright_browser()
 
     if output:
         output_folder = Path(output)
@@ -145,38 +143,6 @@ def check_assembly_db() -> None:
             return
     except Exception as e:
         error(f"Error checking or downloading assembly DB: {e}")
-
-
-def check_playwright_browser() -> None:
-    """
-    Ensure Playwright Firefox is installed with system dependencies.
-    Runs `playwright install --with-deps firefox` which is idempotent.
-    """
-    try:
-        from playwright.sync_api import sync_playwright  # noqa: F401
-    except ImportError:
-        error(
-            "Playwright not found. This should have been installed with hoodini. "
-            "Try reinstalling: pip install -e ."
-        )
-        return
-
-    # Install Firefox with system dependencies (idempotent)
-    info("🔍 Checking Firefox for Playwright...")
-    result = subprocess.run(
-        [sys.executable, "-m", "playwright", "install", "--with-deps", "firefox"],
-        capture_output=True,
-        text=True,
-    )
-
-    if result.returncode == 0:
-        # Check if it actually downloaded or was already present
-        if "already exists" in result.stdout or "already installed" in result.stdout:
-            info("✔️  Firefox already installed.")
-        else:
-            info("✔️  Firefox installed successfully with system dependencies.")
-    else:
-        error(f"Failed to install Firefox: {result.stderr}")
 
 
 def _prompt_yes_no(prompt_text: str, default: str = "no") -> bool:
