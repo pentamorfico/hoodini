@@ -1,11 +1,19 @@
 # Multi-stage build for Hoodini
 FROM condaforge/mambaforge:latest AS builder
 
+# Avoid interactive tzdata prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
 # Install build essentials
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     make \
+    tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
+    && dpkg-reconfigure -f noninteractive tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -21,11 +29,19 @@ RUN mamba env create -f environment.yml && \
 # Final stage
 FROM condaforge/mambaforge:latest
 
+# Avoid interactive tzdata prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
 # Install build essentials (Firefox from mamba brings GUI/X11 deps)
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     make \
+    tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
+    && dpkg-reconfigure -f noninteractive tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -38,22 +54,19 @@ COPY --from=builder /opt/conda/envs/hoodini /opt/conda/envs/hoodini
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
 
-# Initialize conda for bash
-RUN conda init bash
-
-# Activate environment and install the package
-RUN /bin/bash -c "source activate hoodini && \
+# Install the package in the env (no need for conda init)
+RUN /bin/bash -lc "source /opt/conda/etc/profile.d/conda.sh && \
+    conda activate hoodini && \
     pip install --no-cache-dir -e ."
+
+# Install Playwright Firefox with system dependencies
+RUN /bin/bash -lc "source /opt/conda/etc/profile.d/conda.sh && \
+    conda activate hoodini && \
+    playwright install --with-deps firefox"
 
 # Set environment variables
 ENV PATH="/opt/conda/envs/hoodini/bin:${PATH}"
 ENV CONDA_DEFAULT_ENV=hoodini
-
-# Activate conda in entrypoint
-SHELL ["/bin/bash", "-c"]
-
-# Set working directory
-WORKDIR /work
 
 # Create entrypoint script
 RUN echo '#!/bin/bash' > /entrypoint.sh && \
@@ -62,5 +75,6 @@ RUN echo '#!/bin/bash' > /entrypoint.sh && \
     echo 'exec "$@"' >> /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
+WORKDIR /work
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["hoodini", "--help"]

@@ -149,8 +149,8 @@ def check_assembly_db() -> None:
 
 def check_playwright_browser() -> None:
     """
-    Ensure Playwright Firefox is installed.
-    Runs `playwright install firefox` which is idempotent.
+    Ensure Playwright Firefox is installed with system dependencies.
+    Runs `playwright install --with-deps firefox` which is idempotent.
     """
     try:
         from playwright.sync_api import sync_playwright  # noqa: F401
@@ -161,10 +161,10 @@ def check_playwright_browser() -> None:
         )
         return
 
-    # Install Firefox (idempotent - does nothing if already installed)
+    # Install Firefox with system dependencies (idempotent)
     info("🔍 Checking Firefox for Playwright...")
     result = subprocess.run(
-        [sys.executable, "-m", "playwright", "install", "firefox"],
+        [sys.executable, "-m", "playwright", "install", "--with-deps", "firefox"],
         capture_output=True,
         text=True,
     )
@@ -174,7 +174,7 @@ def check_playwright_browser() -> None:
         if "already exists" in result.stdout or "already installed" in result.stdout:
             info("✔️  Firefox already installed.")
         else:
-            info("✔️  Firefox installed successfully.")
+            info("✔️  Firefox installed successfully with system dependencies.")
     else:
         error(f"Failed to install Firefox: {result.stderr}")
 
