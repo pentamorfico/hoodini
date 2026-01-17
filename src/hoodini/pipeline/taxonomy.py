@@ -291,7 +291,7 @@ def _make_tree(records, all_prots, output_dir, threads):
     faa = faa.unique(subset=["unique_id"])
     to_fasta(faa, "unique_id", "sequence", f"{output_dir}/target_prots.fasta")
     subprocess.run(
-        ["famsa", f"{output_dir}/target_prots.fasta", f"{output_dir}/target_prots.aln"],
+        ["famsa", f"{output_dir}/target_prots.fasta", f"{output_dir}/target_prots.aln", "-remove-rare-columns", "0.10"],
         check=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

@@ -159,7 +159,7 @@ hoodini download Download required databases
 | `--deffinder` | Detect defense systems with DefenseFinder |
 | `--cctyper` | Type CRISPR-Cas systems |
 | `--genomad` | Identify mobile genetic elements |
-| `--ncrna` | Predict non-coding RNAs with Infernal |
+| `--ncrna FILE` | Predict ncRNAs with Infernal using custom CM models file (e.g., Rfam.cm) |
 | `--domains LIST` | Search domain databases (comma-separated) |
 
 ### Performance

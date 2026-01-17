@@ -47,22 +47,38 @@ def in_jupyter():
 def _enrich_proteins_with_metadata(
     all_prots: pl.DataFrame, records: pl.DataFrame, all_neigh: pl.DataFrame
 ) -> pl.DataFrame:
-    """Enrich all_prots with target_prot (input protein ID) and target_nuc (nucleotide ID).
+    """Enrich all_prots with target_prot (input protein ID), target_nuc (nucleotide ID), and uniprot_id.
 
     This ensures proteins have metadata linking them to their source protein and nucleotide,
     which is needed by downstream tools (padloc, defensefinder, cctyper, etc.) and visualization.
+    
+    Note: uniprot_id is only added to the actual target protein (where id matches protein_id),
+    not to all proteins in the neighborhood.
     """
     if all_prots.is_empty():
         return all_prots
 
     if "unique_id" in all_prots.columns and "unique_id" in records.columns:
-        prot_map = records.select(["unique_id", "protein_id"]).drop_nulls().unique()
+        # Join target_prot based on unique_id (applies to all proteins in neighborhood)
+        prot_map = records.select(["unique_id", "protein_id"]).unique()
         prot_map = prot_map.with_columns(pl.col("unique_id").cast(pl.Utf8))
         all_prots = all_prots.with_columns(pl.col("unique_id").cast(pl.Utf8))
 
         all_prots = all_prots.join(
             prot_map.rename({"protein_id": "target_prot"}), on="unique_id", how="left"
         )
+        
+    # Join uniprot_id only to the actual target protein (where id == protein_id)
+    if "uniprot_id" in records.columns and "id" in all_prots.columns:
+        uniprot_map = (
+            records.select(["protein_id", "uniprot_id"])
+            .filter(pl.col("uniprot_id").is_not_null())
+            .unique()
+        )
+        if uniprot_map.height > 0:
+            all_prots = all_prots.join(
+                uniprot_map, left_on="id", right_on="protein_id", how="left"
+            )
 
     if all_neigh is not None and all_neigh.height > 0:
         neigh_meta = all_neigh.select(["unique_id", "seqid"]).drop_nulls().unique()
@@ -82,7 +98,7 @@ def run_assembly_parser(
     *,
     output_dir: Path | str | None = None,
     assembly_folder: str = None,
-    ncrna: bool = False,
+    ncrna: str | None = None,
     cctyper: bool = False,
     genomad: bool = False,
     blast: str = None,

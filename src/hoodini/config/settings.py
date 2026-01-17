@@ -65,7 +65,7 @@ class RuntimeConfig:
 
     padloc: bool = False
     deffinder: bool = False
-    ncrna: bool = False
+    ncrna: str | None = None
     cctyper: bool = False
     genomad: bool = False
     sorfs: bool = False
@@ -75,6 +75,7 @@ class RuntimeConfig:
 
     keep: bool = False
     force: bool = False
+    debug: bool = False
 
     def replace(self, **kwargs: Any) -> RuntimeConfig:
         """Return a copy with provided fields updated."""

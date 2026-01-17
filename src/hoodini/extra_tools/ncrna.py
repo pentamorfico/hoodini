@@ -1,6 +1,5 @@
 import re
 import subprocess
-from importlib.resources import files
 from pathlib import Path
 
 import polars as pl
@@ -8,12 +7,12 @@ import polars as pl
 from hoodini.utils.logging_utils import info, warn
 
 
-def run_ncrna(all_neigh, den_data, output, num_threads, valid_unique_ids):
+def run_ncrna(all_neigh, den_data, output, num_threads, valid_unique_ids, cm_path: str | Path):
     info("🔬\tRunning Infernal for ncRNA annotation...")
     output = Path(output)
     ncrna_dir = output / "ncrna"
     ncrna_dir.mkdir(parents=True, exist_ok=True)
-    cm_path = files("hoodini").joinpath("data", "all.cm")
+    cm_path = Path(cm_path)
     stockholm_file = ncrna_dir / "results.sto"
     tblout_file = ncrna_dir / "results.txt"
     command = [

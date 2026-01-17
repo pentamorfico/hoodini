@@ -4,6 +4,7 @@
 from importlib.resources import files
 from pathlib import Path
 
+import duckdb
 import polars as pl
 
 from hoodini.pipeline.helpers.fetch_ipg_from_accessions import fetch_ipg_from_accessions
@@ -158,34 +159,49 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
         return df
 
     try:
-        dive_path = files("hoodini").joinpath("data", "dive_combined.parquet")
-        asm_ids = pl.DataFrame({"assembly_id": assemblies})
-        ts = safe_collect(
-            pl.scan_parquet(dive_path).join(asm_ids.lazy(), on="assembly_id", how="inner")
-        )
+        dive_path = str(files("hoodini").joinpath("data", "dive_combined.parquet"))
+        
+        # Use DuckDB for memory-efficient join
+        con = duckdb.connect(":memory:")
+        con.execute('SET memory_limit = "4GB"')
+        con.execute("CREATE TEMP TABLE asm_lookup (assembly_id VARCHAR)")
+        con.executemany("INSERT INTO asm_lookup VALUES (?)", [(a,) for a in assemblies])
+        
+        ts = con.execute(f"""
+            SELECT d.*
+            FROM read_parquet('{dive_path}') d
+            WHERE d.assembly_id IN (SELECT assembly_id FROM asm_lookup)
+        """).pl()
+        con.close()
+        
         if ts.height > 0:
             ipg_df = ipg_df.join(ts, left_on="assembly", right_on="assembly_id", how="left")
     except Exception as e:
         warn(f"Skipping dive_combined.parquet: {e}")
 
     try:
-        summary_path = files("hoodini").joinpath("data", "assembly_summary.parquet")
-        asm_ids2 = pl.DataFrame({"assembly_accession": assemblies})
-        summary = safe_collect(
-            pl.scan_parquet(summary_path).join(
-                asm_ids2.lazy(), on="assembly_accession", how="inner"
-            )
-        )
-        keep_cols = [
-            "assembly_accession",
-            "taxid",
-            "species_taxid",
-            "organism_name",
-            "infraspecific_name",
-            "assembly_level",
-            "group",
-        ]
-        summary = summary.select([c for c in keep_cols if c in summary.columns])
+        summary_path = str(files("hoodini").joinpath("data", "assembly_summary.parquet"))
+        
+        # Use DuckDB for memory-efficient join
+        con = duckdb.connect(":memory:")
+        con.execute('SET memory_limit = "4GB"')
+        con.execute("CREATE TEMP TABLE asm_lookup2 (assembly_accession VARCHAR)")
+        con.executemany("INSERT INTO asm_lookup2 VALUES (?)", [(a,) for a in assemblies])
+        
+        summary = con.execute(f"""
+            SELECT 
+                assembly_accession,
+                taxid,
+                species_taxid,
+                organism_name,
+                infraspecific_name,
+                assembly_level,
+                "group"
+            FROM read_parquet('{summary_path}')
+            WHERE assembly_accession IN (SELECT assembly_accession FROM asm_lookup2)
+        """).pl()
+        con.close()
+        
         if summary.height > 0:
             ipg_df = ipg_df.join(
                 summary, left_on="assembly", right_on="assembly_accession", how="left"
@@ -241,10 +257,8 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
 def _fetch_nucleotide_data(df: PlDF) -> PlDF:
     """Fetch nucleotide sequence lengths and assembly metadata.
 
-    Memory-safe for contig_lengths with 20M+ rows:
-    - semi-join contig_lengths against nuc_id batches
-    - only materialize a small mapping table: nucleotide_id -> assembly_id, length
-    - join assembly_summary only for assemblies we actually found
+    Uses DuckDB for memory-efficient querying of large parquet files (1.8B+ rows).
+    DuckDB can query parquet with strict memory limits unlike Polars joins.
     """
     if "nucleotide_id" not in df.columns:
         return df
@@ -263,7 +277,7 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
         return df
 
     base = files("hoodini").joinpath("data")
-    contig_path = base / "contig_lengths"
+    contig_path = str(base / "contig_lengths" / "contig_lengths.parquet")
     summary_path = base / "assembly_summary.parquet"
 
     # Ensure target columns exist
@@ -288,77 +302,44 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
             .alias("nucleotide_id_no_prefix")
         )
 
-    def _iter_batches(items: list[str], batch_size: int):
-        for i in range(0, len(items), batch_size):
-            yield items[i : i + batch_size]
-
-    BATCH_SIZE = 25_000
-
-    contigs_lf = pl.scan_parquet(
-        contig_path,
-        missing_columns="insert",
-        extra_columns="ignore",
-    ).select([
-        "assemblyAccession",
-        "length",
-        "genbankAccession",
-        "refseqAccession",
-    ])
-
-    nuc_maps: list[pl.DataFrame] = []
-
     try:
-        info(f"🔍  Looking up {len(nucs)} nuc IDs in contig_lengths (batched)...")
+        info(f"🔍  Looking up {len(nucs)} nuc IDs in contig_lengths...")
 
-        for batch in _iter_batches(nucs, BATCH_SIZE):
-            nucs_lf = pl.DataFrame({"nuc_id": batch}).lazy()
+        import duckdb
 
-            gb_map = (
-                contigs_lf.join(
-                    nucs_lf,
-                    left_on="genbankAccession",
-                    right_on="nuc_id",
-                    how="semi",
-                )
-                .select([
-                    pl.col("genbankAccession").alias("nucleotide_id"),
-                    pl.col("assemblyAccession").alias("assembly_id"),
-                    pl.col("length").alias("sequence_length"),
-                ])
+        con = duckdb.connect(":memory:")
+        # Limit memory to prevent OOM - DuckDB will spill to disk if needed
+        con.execute('SET memory_limit = "4GB"')
+
+        # Create temp table for lookup IDs
+        con.execute("CREATE TEMP TABLE lookup (nuc_id VARCHAR)")
+        con.executemany("INSERT INTO lookup VALUES (?)", [(n,) for n in nucs])
+
+        # Query parquet with semi-join - DuckDB handles this efficiently
+        result_df = con.execute(f"""
+            SELECT nucleotide_id, assembly_id, sequence_length FROM (
+                SELECT genbankAccession as nucleotide_id,
+                       assemblyAccession as assembly_id,
+                       length as sequence_length
+                FROM read_parquet('{contig_path}')
+                WHERE genbankAccession IN (SELECT nuc_id FROM lookup)
+                UNION
+                SELECT refseqAccession as nucleotide_id,
+                       assemblyAccession as assembly_id,
+                       length as sequence_length
+                FROM read_parquet('{contig_path}')
+                WHERE refseqAccession IN (SELECT nuc_id FROM lookup)
             )
+        """).pl()
 
-            rs_map = (
-                contigs_lf.join(
-                    nucs_lf,
-                    left_on="refseqAccession",
-                    right_on="nuc_id",
-                    how="semi",
-                )
-                .select([
-                    pl.col("refseqAccession").alias("nucleotide_id"),
-                    pl.col("assemblyAccession").alias("assembly_id"),
-                    pl.col("length").alias("sequence_length"),
-                ])
-            )
+        # Deduplicate
+        nuc_map = result_df.unique(subset=["nucleotide_id"], keep="first")
+        con.close()
 
-            batch_map = (
-                pl.concat([gb_map, rs_map])
-                .unique(subset=["nucleotide_id"], keep="first")
-                .collect(streaming=True)
-            )
-
-            if batch_map.height > 0:
-                nuc_maps.append(batch_map)
-
-        if nuc_maps:
-            nuc_map = pl.concat(nuc_maps, how="vertical").unique(
-                subset=["nucleotide_id"], keep="first"
-            )
-        else:
-            nuc_map = pl.DataFrame()
+        info(f"✅  Found {nuc_map.height} matches in contig_lengths")
 
     except Exception as e:
-        warn(f"Failed Polars contig lookup in _fetch_nucleotide_data: {e}")
+        warn(f"Failed DuckDB contig lookup in _fetch_nucleotide_data: {e}")
         nuc_map = pl.DataFrame()
 
     # Join contig-derived assembly_id + sequence_length into df
@@ -383,25 +364,27 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
 
     if asms.height > 0:
         try:
-            summary_lf = pl.scan_parquet(summary_path).select([
-                "assembly_accession",
-                "taxid",
-                "species_taxid",
-                "organism_name",
-                "infraspecific_name",
-                "assembly_level",
-                "group",
-            ])
-
-            asm_meta = (
-                summary_lf.join(
-                    asms.lazy().rename({"assembly_id": "assembly_accession"}),
-                    on="assembly_accession",
-                    how="inner",
-                )
-                .rename({"assembly_accession": "assembly_id"})
-                .collect(streaming=True)
-            )
+            # Use DuckDB for memory-efficient assembly metadata lookup
+            asm_list = asms["assembly_id"].to_list()
+            
+            con = duckdb.connect(":memory:")
+            con.execute('SET memory_limit = "4GB"')
+            con.execute("CREATE TEMP TABLE asm_lookup (assembly_id VARCHAR)")
+            con.executemany("INSERT INTO asm_lookup VALUES (?)", [(a,) for a in asm_list])
+            
+            asm_meta = con.execute(f"""
+                SELECT 
+                    assembly_accession as assembly_id,
+                    taxid,
+                    species_taxid,
+                    organism_name,
+                    infraspecific_name,
+                    assembly_level,
+                    "group"
+                FROM read_parquet('{summary_path}')
+                WHERE assembly_accession IN (SELECT assembly_id FROM asm_lookup)
+            """).pl()
+            con.close()
 
             if asm_meta.height > 0:
                 df = df.join(asm_meta, on="assembly_id", how="left", suffix="_asmmeta")
@@ -455,21 +438,28 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
                     df.filter(pl.col("assembly_id").is_not_null())
                     .select("assembly_id")
                     .unique()
-                    .to_series()
-                    .to_list()
                 )
-                if new_asms:
+                if new_asms.height > 0:
                     try:
-                        ids_asm = pl.DataFrame({"assembly_accession": new_asms})
-                        summary2 = safe_collect(
-                            pl.scan_parquet(summary_path).join(
-                                ids_asm.lazy(), on="assembly_accession", how="inner"
-                            )
-                        )
+                        # Use DuckDB for backfill lookup
+                        new_asm_list = new_asms["assembly_id"].to_list()
+                        
+                        con = duckdb.connect(":memory:")
+                        con.execute('SET memory_limit = "4GB"')
+                        con.execute("CREATE TEMP TABLE new_asm_lookup (assembly_id VARCHAR)")
+                        con.executemany("INSERT INTO new_asm_lookup VALUES (?)", [(a,) for a in new_asm_list])
+                        
+                        summary2 = con.execute(f"""
+                            SELECT 
+                                assembly_accession as assembly_id,
+                                taxid,
+                                "group"
+                            FROM read_parquet('{summary_path}')
+                            WHERE assembly_accession IN (SELECT assembly_id FROM new_asm_lookup)
+                        """).pl()
+                        con.close()
+                        
                         if summary2.height > 0:
-                            summary2 = summary2.select(
-                                ["assembly_accession", "taxid", "group"]
-                            ).rename({"assembly_accession": "assembly_id"})
                             df = df.join(summary2, on="assembly_id", how="left", suffix="_backfill")
                             for col in ["taxid", "group"]:
                                 if f"{col}_backfill" in df.columns:

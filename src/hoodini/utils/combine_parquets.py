@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import duckdb
 import polars as pl
 
 from hoodini.utils.logging_utils import info
@@ -9,9 +10,15 @@ output_file = Path(
     "/home/klaupaucius/software/hoodini/hoodini/data/contig_lengths/contig_lengths.parquet"
 )
 
-lazy_df = pl.scan_parquet(str(hive_dir / "part-*.parquet"), allow_missing_columns=True)
+# Use DuckDB for memory-efficient parquet combining
+con = duckdb.connect(":memory:")
+con.execute('SET memory_limit = "4GB"')
 
-df = lazy_df.collect()
+parquet_glob = str(hive_dir / "part-*.parquet")
+df = con.execute(f"""
+    SELECT * FROM read_parquet('{parquet_glob}')
+""").pl()
+con.close()
 
 df.write_parquet(output_file, compression="zstd")
 
