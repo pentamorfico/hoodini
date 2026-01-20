@@ -8,7 +8,7 @@ import polars as pl
 def run_nuc2asmlen(accessions):
     """
     Fetch assembly accession and sequence length for nuccore IDs
-    using a bundled Parquet file in `hoodini/data/contig_lengths`.
+    using DuckDB for memory-efficient querying of the large parquet file.
 
     Parameters:
         accessions (str or list): list of accession strings or path to file
@@ -28,16 +28,45 @@ def run_nuc2asmlen(accessions):
     if not query_accessions:
         raise ValueError("No accessions provided to run_nuc2asmlen")
 
-    parquet_path = files("hoodini").joinpath("data", "contig_lengths")
+    parquet_path = str(
+        files("hoodini").joinpath("data", "contig_lengths", "contig_lengths.parquet")
+    )
 
-    df_lazy = pl.scan_parquet(parquet_path, allow_missing_columns=True)
+    try:
+        import duckdb
 
-    filtered = df_lazy.filter(
-        pl.col("genbankAccession").is_in(query_accessions)
-        | pl.col("refseqAccession").is_in(query_accessions)
-    ).select(["genbankAccession", "refseqAccession", "assemblyAccession", "length"])
+        con = duckdb.connect(":memory:")
+        con.execute('SET memory_limit = "4GB"')
 
-    matches = filtered.collect()
+        # Create temp table for lookup IDs
+        con.execute("CREATE TEMP TABLE lookup (nuc_id VARCHAR)")
+        con.executemany("INSERT INTO lookup VALUES (?)", [(a,) for a in query_accessions])
+
+        # Query with efficient semi-join
+        matches = con.execute(f"""
+            SELECT 
+                genbankAccession,
+                refseqAccession,
+                assemblyAccession,
+                length
+            FROM read_parquet('{parquet_path}')
+            WHERE genbankAccession IN (SELECT nuc_id FROM lookup)
+               OR refseqAccession IN (SELECT nuc_id FROM lookup)
+        """).pl()
+
+        con.close()
+
+    except Exception:
+        # Fallback to Polars if DuckDB fails
+        df_lazy = pl.scan_parquet(parquet_path)
+        matches = (
+            df_lazy.filter(
+                pl.col("genbankAccession").is_in(query_accessions)
+                | pl.col("refseqAccession").is_in(query_accessions)
+            )
+            .select(["genbankAccession", "refseqAccession", "assemblyAccession", "length"])
+            .collect()
+        )
 
     ref_matches = matches.filter(
         pl.col("refseqAccession").is_in(query_accessions)

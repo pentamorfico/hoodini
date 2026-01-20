@@ -8,7 +8,7 @@ import polars as pl
 
 from hoodini.models.schemas import RECORDS
 from hoodini.pipeline.helpers.single_query import prepare_single_query_input
-from hoodini.utils.logging_utils import error, info, prompt, warn
+from hoodini.utils.logging_utils import error, info, warn
 from hoodini.utils.polars_adapters import to_polars
 from hoodini.utils.validation import read_input_list, read_input_sheet, uniprot2ncbi
 
@@ -67,12 +67,8 @@ def initialize_inputs(
             warn(f"Overwriting existing folder {output_folder}.")
             shutil.rmtree(output_folder)
         else:
-            warn(f"Folder {output_folder} already exists.")
-            answer = _prompt_yes_no("⌨️  Remove it?", default="y/N")
-            if not answer:
-                error("Aborting: Folder not modified.")
-                sys.exit(1)
-            shutil.rmtree(output_folder)
+            error(f"Output folder '{output_folder}' already exists. Use --force to overwrite.")
+            sys.exit(1)
 
     output_folder.mkdir(parents=True, exist_ok=True)
     info(f"✔️  Created folder {output_folder}")
@@ -143,16 +139,3 @@ def check_assembly_db() -> None:
             return
     except Exception as e:
         error(f"Error checking or downloading assembly DB: {e}")
-
-
-def _prompt_yes_no(prompt_text: str, default: str = "no") -> bool:
-    """Ask user a yes/no question via prompt."""
-    valid_yes = {"y", "yes"}
-    valid_no = {"n", "no"}
-    while True:
-        response = prompt(prompt_text, default=default).strip().lower()
-        if response in valid_yes:
-            return True
-        if response in valid_no:
-            return False
-        warn("Please enter 'y' or 'n'.")

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import aiohttp  # type: ignore[import]
+import duckdb
 import polars as pl  # type: ignore[import]
 import pyarrow as pa
 import pyarrow.parquet as pq  # type: ignore[import]
@@ -90,32 +91,9 @@ def get_missing_contigs_from_summary(
 ) -> tuple[pl.DataFrame, float | None]:
     """Return a DataFrame of missing assembly_accession values and latest mtime.
 
-    Uses lazy evaluation and anti-join with streaming to minimize memory usage.
+    Uses DuckDB for memory-efficient querying of large parquet files.
     """
-    # Use lazy scan for summary
-    summary_lf = (
-        pl.scan_parquet(str(ASSEMBLY_SUMMARY))
-        .filter(
-            (pl.col("group").is_in(DEFAULT_GROUPS))
-            & pl.col("ftp_path").is_not_null()
-            & (pl.col("ftp_path").str.strip_chars() != "")
-            & (pl.col("ftp_path").str.to_lowercase() != "na")
-        )
-        .select(pl.col("assembly_accession").cast(pl.Utf8))
-        .unique()
-    )
-
-    # Filter by allowed_assemblies if provided (using semi-join)
-    if allowed_assemblies_df is not None:
-        summary_lf = summary_lf.join(
-            allowed_assemblies_df.lazy(),
-            on="assembly_accession",
-            how="semi",
-        )
-
     latest_mtime: float | None = None
-
-    # Build missing_lf lazily - scan ALL *.parquet files (compiled + new parts)
     all_parquet_files = list(CONTIG_LENGTHS_DIR.glob("*.parquet"))
 
     if all_parquet_files:
@@ -123,30 +101,82 @@ def get_missing_contigs_from_summary(
         with contextlib.suppress(Exception):
             latest_mtime = max(p.stat().st_mtime for p in all_parquet_files)
 
-        # Lazy scan for ALL existing contig assemblies
-        contig_lf = (
-            pl.scan_parquet(
-                str(CONTIG_LENGTHS_DIR / "*.parquet"),
-                missing_columns="insert",
-                extra_columns="ignore",
+    try:
+        con = duckdb.connect(":memory:")
+        con.execute('SET memory_limit = "4GB"')
+
+        # Create temp table for allowed assemblies if provided
+        if allowed_assemblies_df is not None:
+            allowed_list = allowed_assemblies_df["assembly_accession"].to_list()
+            con.execute("CREATE TEMP TABLE allowed_asm (assembly_accession VARCHAR)")
+            con.executemany("INSERT INTO allowed_asm VALUES (?)", [(a,) for a in allowed_list])
+
+        # Build the query for valid assemblies from assembly_summary
+        groups_str = ", ".join(f"'{g}'" for g in DEFAULT_GROUPS)
+        summary_query = f"""
+            SELECT DISTINCT CAST(assembly_accession AS VARCHAR) as assembly_accession
+            FROM read_parquet('{str(ASSEMBLY_SUMMARY)}')
+            WHERE "group" IN ({groups_str})
+              AND ftp_path IS NOT NULL
+              AND TRIM(ftp_path) != ''
+              AND LOWER(ftp_path) != 'na'
+        """
+
+        if allowed_assemblies_df is not None:
+            summary_query += " AND assembly_accession IN (SELECT assembly_accession FROM allowed_asm)"
+
+        if all_parquet_files:
+            # Query existing contig assemblies and do anti-join
+            contig_glob = str(CONTIG_LENGTHS_DIR / "*.parquet")
+            missing_df = con.execute(f"""
+                WITH summary AS ({summary_query}),
+                existing AS (
+                    SELECT DISTINCT CAST(assemblyAccession AS VARCHAR) as assembly_accession
+                    FROM read_parquet('{contig_glob}')
+                )
+                SELECT s.assembly_accession
+                FROM summary s
+                LEFT JOIN existing e ON s.assembly_accession = e.assembly_accession
+                WHERE e.assembly_accession IS NULL
+            """).pl()
+        else:
+            console.log("No existing contig_lengths found, will download all")
+            missing_df = con.execute(summary_query).pl()
+
+        con.close()
+
+    except Exception as e:
+        console.log(f"⚠️  DuckDB failed, falling back to Polars streaming: {e}")
+        # Fallback to Polars if DuckDB fails
+        summary_lf = (
+            pl.scan_parquet(str(ASSEMBLY_SUMMARY))
+            .filter(
+                (pl.col("group").is_in(DEFAULT_GROUPS))
+                & pl.col("ftp_path").is_not_null()
+                & (pl.col("ftp_path").str.strip_chars() != "")
+                & (pl.col("ftp_path").str.to_lowercase() != "na")
             )
-            .select(pl.col("assemblyAccession").cast(pl.Utf8).alias("assembly_accession"))
+            .select(pl.col("assembly_accession").cast(pl.Utf8))
             .unique()
         )
-
-        # Anti-join to find missing (lazy)
-        missing_lf = summary_lf.join(
-            contig_lf,
-            on="assembly_accession",
-            how="anti",
-        )
-    else:
-        console.log("No existing contig_lengths found, will download all")
-        missing_lf = summary_lf
-
-    # Collect with streaming to minimize RAM usage
-    console.log("Collecting missing assemblies (streaming)...")
-    missing_df = missing_lf.collect(streaming=True)
+        if allowed_assemblies_df is not None:
+            summary_lf = summary_lf.join(
+                allowed_assemblies_df.lazy(),
+                on="assembly_accession",
+                how="semi",
+            )
+        if all_parquet_files:
+            contig_lf = (
+                pl.scan_parquet(
+                    str(CONTIG_LENGTHS_DIR / "*.parquet"),
+                )
+                .select(pl.col("assemblyAccession").cast(pl.Utf8).alias("assembly_accession"))
+                .unique()
+            )
+            missing_lf = summary_lf.join(contig_lf, on="assembly_accession", how="anti")
+        else:
+            missing_lf = summary_lf
+        missing_df = missing_lf.collect(streaming=True)
 
     console.log(f"❗ {missing_df.height:,} assemblies missing contig lengths.")
     console.log(f"latest_mtime: {latest_mtime}")
@@ -351,19 +381,20 @@ def download_contig_lengths(
     # Build allowed_assemblies as a DataFrame (not a Python set)
     allowed_assemblies_df: pl.DataFrame | None = None
     try:
-        # Use lazy scan to get candidate IDs without loading full DataFrame
-        candidate_ids_lf = (
-            pl.scan_parquet(str(ASSEMBLY_SUMMARY))
-            .filter(
-                (pl.col("group").is_in(DEFAULT_GROUPS))
-                & pl.col("ftp_path").is_not_null()
-                & (pl.col("ftp_path").str.strip_chars() != "")
-                & (pl.col("ftp_path").str.to_lowercase() != "na")
-            )
-            .select(pl.col("assembly_accession").cast(pl.Utf8))
-            .unique()
-        )
-        candidate_ids = candidate_ids_lf.collect()["assembly_accession"].to_list()
+        # Use DuckDB to get candidate IDs without loading full DataFrame
+        con = duckdb.connect(":memory:")
+        con.execute('SET memory_limit = "4GB"')
+        groups_str = ", ".join(f"'{g}'" for g in DEFAULT_GROUPS)
+        candidate_df = con.execute(f"""
+            SELECT DISTINCT CAST(assembly_accession AS VARCHAR) as assembly_accession
+            FROM read_parquet('{str(ASSEMBLY_SUMMARY)}')
+            WHERE "group" IN ({groups_str})
+              AND ftp_path IS NOT NULL
+              AND TRIM(ftp_path) != ''
+              AND LOWER(ftp_path) != 'na'
+        """).pl()
+        con.close()
+        candidate_ids = candidate_df["assembly_accession"].to_list()
 
         if candidate_ids:
             links_df = get_prefetched_link_table(candidate_ids, kinds=["sequence_report"])
@@ -386,36 +417,51 @@ def download_contig_lengths(
         remote_last_mod = _get_remote_parquet_last_modified()
 
         if remote_last_mod:
-            # Check if seq_rel_date column exists
-            schema = pl.scan_parquet(str(ASSEMBLY_SUMMARY)).collect_schema()
-            if "seq_rel_date" in schema.names():
-                remote_date = remote_last_mod.date()
+            try:
+                # Use DuckDB to check schema and filter by date
+                con = duckdb.connect(":memory:")
+                con.execute('SET memory_limit = "4GB"')
 
-                # Join missing with assembly dates, filter by date
-                asm_dates_lf = pl.scan_parquet(str(ASSEMBLY_SUMMARY)).select(
-                    [
-                        pl.col("assembly_accession").cast(pl.Utf8),
-                        pl.col("seq_rel_date").str.to_date().alias("seq_rel_date"),
-                    ]
-                )
+                # Check if seq_rel_date column exists
+                schema_result = con.execute(f"""
+                    SELECT column_name FROM parquet_schema('{str(ASSEMBLY_SUMMARY)}')
+                    WHERE column_name = 'seq_rel_date'
+                """).fetchone()
 
-                # Filter: keep if date is null OR date > remote_date
-                missing_df = (
-                    missing_df.lazy()
-                    .join(asm_dates_lf, on="assembly_accession", how="left")
-                    .filter(
-                        pl.col("seq_rel_date").is_null() | (pl.col("seq_rel_date") > remote_date)
+                if schema_result:
+                    remote_date = remote_last_mod.date()
+                    remote_date_str = remote_date.isoformat()
+
+                    # Create temp table for missing assemblies
+                    missing_list = missing_df["assembly_accession"].to_list()
+                    con.execute("CREATE TEMP TABLE missing_asm (assembly_accession VARCHAR)")
+                    con.executemany("INSERT INTO missing_asm VALUES (?)", [(a,) for a in missing_list])
+
+                    # Filter: keep if date is null OR date > remote_date
+                    missing_df = con.execute(f"""
+                        SELECT DISTINCT m.assembly_accession
+                        FROM missing_asm m
+                        LEFT JOIN (
+                            SELECT 
+                                CAST(assembly_accession AS VARCHAR) as assembly_accession,
+                                TRY_CAST(seq_rel_date AS DATE) as seq_rel_date
+                            FROM read_parquet('{str(ASSEMBLY_SUMMARY)}')
+                        ) a ON m.assembly_accession = a.assembly_accession
+                        WHERE a.seq_rel_date IS NULL OR a.seq_rel_date > '{remote_date_str}'
+                    """).pl()
+
+                    console.log(
+                        f"Filtered by remote date ({remote_date}): {missing_df.height:,} assemblies remain"
                     )
-                    .select("assembly_accession")
-                    .collect()
-                )
-                console.log(
-                    f"Filtered by remote date ({remote_date}): {missing_df.height:,} assemblies remain"
-                )
-            else:
-                console.log(
-                    "⚠️  'seq_rel_date' not found in assembly_summary; skipping date filtering"
-                )
+                else:
+                    console.log(
+                        "⚠️  'seq_rel_date' not found in assembly_summary; skipping date filtering"
+                    )
+
+                con.close()
+
+            except Exception as e:
+                console.log(f"⚠️  DuckDB date filtering failed: {e}; skipping date filter")
 
     if missing_df.height == 0:
         console.log("✅ No missing contig lengths to download.")

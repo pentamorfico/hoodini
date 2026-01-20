@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import warnings
+from pathlib import Path
 
 import rich_click as click
 import tomli
@@ -218,7 +219,12 @@ def cli():
 )
 @click.option("--padloc", is_flag=True, help="Run PADLOC for antiphage defense.")
 @click.option("--deffinder", is_flag=True, help="Run DefenseFinder for antiphage defense.")
-@click.option("--ncrna", is_flag=True, help="Run Infernal for ncRNA prediction.")
+@click.option(
+    "--ncrna",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Path to CM models file for ncRNA prediction with Infernal (e.g., Rfam.cm).",
+)
 @click.option("--cctyper", is_flag=True, help="Run CCtyper for CRISPR-Cas prediction.")
 @click.option("--genomad", is_flag=True, help="Run GenoMAD for MGE identification.")
 @click.option("--sorfs", is_flag=True, help="Reannotate small open reading frames.")
@@ -285,7 +291,7 @@ def run(ctx, config_file: str | None, quiet: bool, debug: bool, **cli_kwargs) ->
     config = build_runtime_config(
         defaults=load_default_config(),
         file_overrides=file_kwargs,
-        cli_overrides=cli_clean,
+        cli_overrides={**cli_clean, "debug": debug},
     )
 
     config = config.replace(

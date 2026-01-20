@@ -19,6 +19,7 @@ import zlib
 from collections.abc import Iterable
 from importlib.resources import files
 
+import duckdb
 import polars as pl
 import requests
 
@@ -104,7 +105,8 @@ _LOCAL_ASM_MAP: dict | None = None
 def _load_local_assembly_map() -> dict:
     """Load mapping assembly_accession -> ftp_path from packaged parquet file.
 
-    Returns empty dict if the file is missing or cannot be read.
+    Uses DuckDB for memory-efficient querying. Returns empty dict if the file 
+    is missing or cannot be read.
     """
     global _LOCAL_ASM_MAP
     if _LOCAL_ASM_MAP is not None:
@@ -114,11 +116,21 @@ def _load_local_assembly_map() -> dict:
         if not path.exists():
             _LOCAL_ASM_MAP = {}
             return _LOCAL_ASM_MAP
-        df = pl.read_parquet(path, columns=["assembly_accession", "ftp_path"])
+        
+        con = duckdb.connect(":memory:")
+        con.execute('SET memory_limit = "4GB"')
+        df = con.execute(f"""
+            SELECT 
+                CAST(assembly_accession AS VARCHAR) as assembly_accession,
+                CAST(ftp_path AS VARCHAR) as ftp_path
+            FROM read_parquet('{str(path)}')
+        """).pl()
+        con.close()
+        
         _LOCAL_ASM_MAP = dict(
             zip(
-                df["assembly_accession"].cast(pl.Utf8).to_list(),
-                df["ftp_path"].cast(pl.Utf8).to_list(),
+                df["assembly_accession"].to_list(),
+                df["ftp_path"].to_list(),
             )
         )
         return _LOCAL_ASM_MAP

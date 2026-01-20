@@ -12,10 +12,12 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
     """
     Run mmseqs easy-search, pick best hit per query directly in Polars,
     join to eggNOG metadata, pick the deepest OG per query,
-    and return one row per input protein as a pandas DataFrame.
+    and return one row per input protein as a Polars DataFrame.
+    
+    Uses DuckDB for memory-efficient querying of large eggnog_prots.parquet (2.4GB).
     """
 
-    info("🧾\tRunning eggNOG-mapper (mmseqs + eggNOG, best+deepest OG via Polars) ...")
+    info("🧾\tRunning eggNOG-mapper (mmseqs + eggNOG, best+deepest OG via DuckDB) ...")
 
     output = Path(output)
     emapper_dir = output / "emapper"
@@ -105,26 +107,79 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
     eggnog_prots_path = str(files("hoodini").joinpath("data", "emapper", "eggnog_prots.parquet"))
     eggnog_og_path = str(files("hoodini").joinpath("data", "emapper", "eggnog_og.parquet"))
 
-    prots = (
-        pl.scan_parquet(eggnog_prots_path)
-        .with_columns(pl.col("ogs").fill_null("").str.split(",").alias("ogs_list"))
-        .explode("ogs_list")
-        .filter((pl.col("ogs_list") != "") & pl.col("ogs_list").str.contains("@"))
-        .with_columns(pl.col("ogs_list").str.split_exact("@", 1).alias("og_split"))
-        .with_columns(
-            [
-                pl.col("og_split").struct.field("field_0").alias("og"),
-                pl.col("og_split").struct.field("field_1").cast(pl.Utf8).alias("level"),
-            ]
+    # Get list of sseqids we need to look up
+    sseqids = hits_best["sseqid"].unique().to_list()
+
+    try:
+        import duckdb
+
+        con = duckdb.connect(":memory:")
+        con.execute('SET memory_limit = "4GB"')
+
+        # Create temp table for lookup IDs
+        con.execute("CREATE TEMP TABLE lookup (name VARCHAR)")
+        con.executemany("INSERT INTO lookup VALUES (?)", [(s,) for s in sseqids])
+
+        # Query eggnog_prots with filtering - only get rows we need
+        # Then explode OGs in DuckDB which is more memory efficient
+        prots = con.execute(f"""
+            WITH filtered_prots AS (
+                SELECT name, ogs
+                FROM read_parquet('{eggnog_prots_path}')
+                WHERE name IN (SELECT name FROM lookup)
+            ),
+            exploded AS (
+                SELECT 
+                    name,
+                    UNNEST(string_split(COALESCE(ogs, ''), ',')) as og_level
+                FROM filtered_prots
+            )
+            SELECT 
+                name,
+                split_part(og_level, '@', 1) as og,
+                split_part(og_level, '@', 2) as level
+            FROM exploded
+            WHERE og_level != '' AND og_level LIKE '%@%'
+        """).pl()
+
+        con.close()
+
+    except Exception as e:
+        warn(f"DuckDB failed for eggnog_prots, falling back to Polars: {e}")
+        # Fallback to original Polars approach
+        prots = (
+            pl.scan_parquet(eggnog_prots_path)
+            .filter(pl.col("name").is_in(sseqids))
+            .with_columns(pl.col("ogs").fill_null("").str.split(",").alias("ogs_list"))
+            .explode("ogs_list")
+            .filter((pl.col("ogs_list") != "") & pl.col("ogs_list").str.contains("@"))
+            .with_columns(pl.col("ogs_list").str.split_exact("@", 1).alias("og_split"))
+            .with_columns(
+                [
+                    pl.col("og_split").struct.field("field_0").alias("og"),
+                    pl.col("og_split").struct.field("field_1").cast(pl.Utf8).alias("level"),
+                ]
+            )
+            .drop(["ogs_list", "og_split", "ogs"])
+            .collect()
         )
-        .drop(["ogs_list", "og_split"])
-    )
 
-    hits_prots = hits_best.lazy().join(prots, left_on="sseqid", right_on="name", how="left")
+    hits_prots = hits_best.join(prots, left_on="sseqid", right_on="name", how="left")
 
-    og = pl.scan_parquet(eggnog_og_path).with_columns(pl.col("level").cast(pl.Utf8))
+    # Use DuckDB for memory-efficient reading of eggnog_og.parquet
+    try:
+        con_og = duckdb.connect(":memory:")
+        con_og.execute('SET memory_limit = "4GB"')
+        og = con_og.execute(f"""
+            SELECT *, CAST(level AS VARCHAR) as level
+            FROM read_parquet('{eggnog_og_path}')
+        """).pl()
+        con_og.close()
+    except Exception as e:
+        warn(f"DuckDB failed for eggnog_og, falling back to Polars: {e}")
+        og = pl.read_parquet(eggnog_og_path).with_columns(pl.col("level").cast(pl.Utf8))
 
-    annotated = hits_prots.join(og, on=["og", "level"], how="left", suffix="_og").collect()
+    annotated = hits_prots.join(og, on=["og", "level"], how="left", suffix="_og")
 
     annotated = annotated.with_columns(pl.col("level").cast(pl.Int64, strict=False))
     annotated = annotated.sort(["qseqid", "level"], descending=[False, True])

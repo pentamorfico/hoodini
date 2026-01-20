@@ -4,6 +4,7 @@
 from importlib.resources import files
 from pathlib import Path
 
+import duckdb
 import polars as pl
 
 from hoodini.pipeline.helpers.fetch_ipg_from_accessions import fetch_ipg_from_accessions
@@ -25,30 +26,7 @@ def safe_collect(lf: pl.LazyFrame) -> PlDF:
 
 
 def run_ipg(records_df: PlDF, *, cand_mode: str) -> PlDF:
-    """Polars-based IPG enrichment pipeline.
-
-    Expected Files:
-    ---------------
-    - records_df: DataFrame from initialize_inputs with protein IDs
-    - Remote APIs: NCBI IPG web service, assembly reports (FTP)
-
-    Generated Files:
-    ----------------
-    - None (all data kept in memory/DataFrame)
-
-    Process:
-    --------
-    1. Fetches IPG (Identical Protein Groups) records from NCBI for input protein IDs
-    2. Maps proteins to nucleotide IDs and assembly accessions
-    3. Applies candidate selection mode ('all', 'best', or 'model')
-    4. Enriches records with assembly metadata (taxid, organism, strain)
-    5. Computes assembly lengths and filters candidates
-
-    Returns:
-    --------
-    pl.DataFrame: Enriched records with columns: og_index, protein_id, nucleotide_id,
-                  assembly, taxid, organism, strain, unique_id, etc.
-    """
+    """Polars-based IPG enrichment pipeline."""
     df = records_df.clone()
 
     def _as_scalar_str(val):
@@ -77,15 +55,19 @@ def run_ipg(records_df: PlDF, *, cand_mode: str) -> PlDF:
         .map_elements(_is_refseq, return_dtype=pl.Boolean)
         .alias("is_refseq_query")
     )
+
     info("🔍  Fetching IPG data...")
     df = _fetch_ipg_data(df, cand_mode)
     _trace_ipg(df, stage="after_fetch_ipg")
+
     info("🔍  Fetching nucleotide data...")
     df = _fetch_nucleotide_data(df)
     _trace_ipg(df, stage="after_fetch_nuc")
+
     info("✅  Selecting best IPG records...")
     df = _select_best_ipg(df, cand_mode)
     _trace_ipg(df, stage="after_select_best")
+
     df = _finalize_ipg(df, cand_mode)
     return df
 
@@ -129,6 +111,7 @@ def _fill_ipg_polars(records: PlDF, ipg_df: PlDF) -> PlDF:
     ipg_cols = [c for c in ipg_df.columns if c not in ["protein_id", "ipg_id"]]
     if "ipg_protein_id" in ipg_df.columns and "ipg_protein_id" not in ipg_cols:
         ipg_cols.append("ipg_protein_id")
+
     select_cols = ["ipg_id"] + ipg_cols
     if ipg_df.height > 0 and "ipg_id" in ipg_df.columns:
         select_cols_present = [c for c in select_cols if c in ipg_df.columns]
@@ -176,34 +159,49 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
         return df
 
     try:
-        dive_path = files("hoodini").joinpath("data", "dive_combined.parquet")
-        asm_ids = pl.DataFrame({"assembly_id": assemblies})
-        ts = safe_collect(
-            pl.scan_parquet(dive_path).join(asm_ids.lazy(), on="assembly_id", how="inner")
-        )
+        dive_path = str(files("hoodini").joinpath("data", "dive_combined.parquet"))
+        
+        # Use DuckDB for memory-efficient join
+        con = duckdb.connect(":memory:")
+        con.execute('SET memory_limit = "4GB"')
+        con.execute("CREATE TEMP TABLE asm_lookup (assembly_id VARCHAR)")
+        con.executemany("INSERT INTO asm_lookup VALUES (?)", [(a,) for a in assemblies])
+        
+        ts = con.execute(f"""
+            SELECT d.*
+            FROM read_parquet('{dive_path}') d
+            WHERE d.assembly_id IN (SELECT assembly_id FROM asm_lookup)
+        """).pl()
+        con.close()
+        
         if ts.height > 0:
             ipg_df = ipg_df.join(ts, left_on="assembly", right_on="assembly_id", how="left")
     except Exception as e:
         warn(f"Skipping dive_combined.parquet: {e}")
 
     try:
-        summary_path = files("hoodini").joinpath("data", "assembly_summary.parquet")
-        asm_ids2 = pl.DataFrame({"assembly_accession": assemblies})
-        summary = safe_collect(
-            pl.scan_parquet(summary_path).join(
-                asm_ids2.lazy(), on="assembly_accession", how="inner"
-            )
-        )
-        keep_cols = [
-            "assembly_accession",
-            "taxid",
-            "species_taxid",
-            "organism_name",
-            "infraspecific_name",
-            "assembly_level",
-            "group",
-        ]
-        summary = summary.select([c for c in keep_cols if c in summary.columns])
+        summary_path = str(files("hoodini").joinpath("data", "assembly_summary.parquet"))
+        
+        # Use DuckDB for memory-efficient join
+        con = duckdb.connect(":memory:")
+        con.execute('SET memory_limit = "4GB"')
+        con.execute("CREATE TEMP TABLE asm_lookup2 (assembly_accession VARCHAR)")
+        con.executemany("INSERT INTO asm_lookup2 VALUES (?)", [(a,) for a in assemblies])
+        
+        summary = con.execute(f"""
+            SELECT 
+                assembly_accession,
+                taxid,
+                species_taxid,
+                organism_name,
+                infraspecific_name,
+                assembly_level,
+                "group"
+            FROM read_parquet('{summary_path}')
+            WHERE assembly_accession IN (SELECT assembly_accession FROM asm_lookup2)
+        """).pl()
+        con.close()
+        
         if summary.height > 0:
             ipg_df = ipg_df.join(
                 summary, left_on="assembly", right_on="assembly_accession", how="left"
@@ -257,285 +255,160 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
 
 
 def _fetch_nucleotide_data(df: PlDF) -> PlDF:
-    """Fetch nucleotide sequence lengths and assembly metadata."""
-    nucs = df.select("nucleotide_id").unique().to_series().to_list()
-    nucs = [n for n in nucs if n and str(n).strip()]
+    """Fetch nucleotide sequence lengths and assembly metadata.
+
+    Uses DuckDB for memory-efficient querying of large parquet files (1.8B+ rows).
+    DuckDB can query parquet with strict memory limits unlike Polars joins.
+    """
+    if "nucleotide_id" not in df.columns:
+        return df
+
+    nucs = (
+        df.select("nucleotide_id")
+        .unique()
+        .to_series()
+        .drop_nulls()
+        .to_list()
+    )
+    nucs = [n for n in nucs if str(n).strip()]
 
     if not nucs:
         info("ℹ️  No nucleotide IDs to fetch.")
         return df
 
     base = files("hoodini").joinpath("data")
-    contig_path = base / "contig_lengths"
+    contig_path = str(base / "contig_lengths" / "contig_lengths.parquet")
     summary_path = base / "assembly_summary.parquet"
 
+    # Ensure target columns exist
+    for c, dt in [
+        ("assembly_id", pl.Utf8),
+        ("sequence_length", pl.Int64),
+        ("taxid", pl.Int64),
+        ("group", pl.Utf8),
+        ("species_taxid", pl.Int64),
+        ("organism_name", pl.Utf8),
+        ("infraspecific_name", pl.Utf8),
+        ("assembly_level", pl.Utf8),
+    ]:
+        if c not in df.columns:
+            df = df.with_columns(pl.lit(None).cast(dt).alias(c))
+
+    if "nucleotide_id_no_prefix" not in df.columns:
+        df = df.with_columns(
+            pl.col("nucleotide_id")
+            .cast(pl.Utf8, strict=False)
+            .str.replace(r"^[A-Z]{2}_", "")
+            .alias("nucleotide_id_no_prefix")
+        )
+
     try:
-        contigs_lf = pl.scan_parquet(
-            contig_path,
-            missing_columns="insert",
-            extra_columns="ignore",
-        ).filter((pl.col("genbankAccession").is_in(nucs)) | (pl.col("refseqAccession").is_in(nucs)))
+        info(f"🔍  Looking up {len(nucs)} nuc IDs in contig_lengths...")
 
-        summary_scan = pl.scan_parquet(summary_path).select(
-            [
-                "assembly_accession",
-                "taxid",
-                "species_taxid",
-                "organism_name",
-                "infraspecific_name",
-                "assembly_level",
-                "group",
-            ]
-        )
+        import duckdb
 
-        joined_lf = contigs_lf.join(
-            summary_scan, left_on="assemblyAccession", right_on="assembly_accession", how="left"
-        )
+        con = duckdb.connect(":memory:")
+        # Limit memory to prevent OOM - DuckDB will spill to disk if needed
+        con.execute('SET memory_limit = "4GB"')
 
-        mapping_df = safe_collect(
-            joined_lf.select(
-                [
-                    pl.col("assemblyAccession").alias("assembly_id"),
-                    pl.col("length").alias("sequence_length"),
-                    pl.col("taxid"),
-                    pl.col("group"),
-                    pl.col("species_taxid"),
-                    pl.col("organism_name"),
-                    pl.col("infraspecific_name"),
-                    pl.col("assembly_level"),
-                    pl.col("genbankAccession"),
-                    pl.col("refseqAccession"),
-                ]
+        # Create temp table for lookup IDs
+        con.execute("CREATE TEMP TABLE lookup (nuc_id VARCHAR)")
+        con.executemany("INSERT INTO lookup VALUES (?)", [(n,) for n in nucs])
+
+        # Query parquet with semi-join - DuckDB handles this efficiently
+        result_df = con.execute(f"""
+            SELECT nucleotide_id, assembly_id, sequence_length FROM (
+                SELECT genbankAccession as nucleotide_id,
+                       assemblyAccession as assembly_id,
+                       length as sequence_length
+                FROM read_parquet('{contig_path}')
+                WHERE genbankAccession IN (SELECT nuc_id FROM lookup)
+                UNION
+                SELECT refseqAccession as nucleotide_id,
+                       assemblyAccession as assembly_id,
+                       length as sequence_length
+                FROM read_parquet('{contig_path}')
+                WHERE refseqAccession IN (SELECT nuc_id FROM lookup)
             )
-        )
+        """).pl()
+
+        # Deduplicate
+        nuc_map = result_df.unique(subset=["nucleotide_id"], keep="first")
+        con.close()
+
+        info(f"✅  Found {nuc_map.height} matches in contig_lengths")
 
     except Exception as e:
-        warn(f"Failed Polars fetch in _fetch_nucleotide_data: {e}")
-        mapping_df = pl.DataFrame()
+        warn(f"Failed DuckDB contig lookup in _fetch_nucleotide_data: {e}")
+        nuc_map = pl.DataFrame()
 
-    if mapping_df.height > 0:
-        mapping_df = mapping_df.with_columns(
-            pl.col("assembly_id").cast(pl.Utf8),
-            pl.col("refseqAccession").str.replace(r"^[A-Z]{2}_", "").alias("refseq_no_prefix"),
-            pl.col("genbankAccession").cast(pl.Utf8),
-        )
-
-        gcf_map = (
-            mapping_df.filter(pl.col("assembly_id").str.starts_with("GCF_"))
-            .select(
-                [
-                    pl.col("refseqAccession").alias("nucleotide_id"),
-                    pl.col("refseq_no_prefix").alias("nucleotide_id_no_prefix"),
-                    "assembly_id",
-                    "sequence_length",
-                    "taxid",
-                    "group",
-                    "species_taxid",
-                    "organism_name",
-                    "infraspecific_name",
-                    "assembly_level",
-                ]
-            )
-            .unique(subset=["nucleotide_id", "nucleotide_id_no_prefix"], keep="first")
-        )
-
-        gca_map = (
-            mapping_df.filter(pl.col("assembly_id").str.starts_with("GCA_"))
-            .select(
-                [
-                    pl.col("genbankAccession").alias("nucleotide_id"),
-                    "assembly_id",
-                    "sequence_length",
-                    "taxid",
-                    "group",
-                    "species_taxid",
-                    "organism_name",
-                    "infraspecific_name",
-                    "assembly_level",
-                ]
-            )
-            .unique(subset=["nucleotide_id"], keep="first")
-        )
-
-        for c in [
-            "sequence_length",
-            "assembly_id",
-            "taxid",
-            "group",
-            "species_taxid",
-            "organism_name",
-            "infraspecific_name",
-            "assembly_level",
-        ]:
-            if c not in df.columns:
+    # Join contig-derived assembly_id + sequence_length into df
+    if nuc_map.height > 0:
+        df = df.join(nuc_map, on="nucleotide_id", how="left", suffix="_contigs")
+        for col in ["assembly_id", "sequence_length"]:
+            src = f"{col}_contigs"
+            if src in df.columns:
                 df = df.with_columns(
-                    pl.lit(None).cast(pl.Utf8 if c not in ["taxid"] else pl.Int64).alias(c)
-                )
+                    pl.when(pl.col(col).is_null())
+                    .then(pl.col(src))
+                    .otherwise(pl.col(col))
+                    .alias(col)
+                ).drop(src)
 
-        if "nucleotide_id_no_prefix" not in df.columns:
-            df = df.with_columns(
-                pl.col("nucleotide_id")
-                .str.replace(r"^[A-Z]{2}_", "")
-                .alias("nucleotide_id_no_prefix")
-            )
+    # Enrich assembly metadata ONLY for the assemblies we have
+    asms = (
+        df.filter(pl.col("assembly_id").is_not_null())
+        .select("assembly_id")
+        .unique()
+    )
 
-        has_asm_mask = df["assembly_id"].is_not_null()
-        df_with_asm = df.filter(has_asm_mask)
-        df_no_asm = df.filter(~has_asm_mask)
+    if asms.height > 0:
+        try:
+            # Use DuckDB for memory-efficient assembly metadata lookup
+            asm_list = asms["assembly_id"].to_list()
+            
+            con = duckdb.connect(":memory:")
+            con.execute('SET memory_limit = "4GB"')
+            con.execute("CREATE TEMP TABLE asm_lookup (assembly_id VARCHAR)")
+            con.executemany("INSERT INTO asm_lookup VALUES (?)", [(a,) for a in asm_list])
+            
+            asm_meta = con.execute(f"""
+                SELECT 
+                    assembly_accession as assembly_id,
+                    taxid,
+                    species_taxid,
+                    organism_name,
+                    infraspecific_name,
+                    assembly_level,
+                    "group"
+                FROM read_parquet('{summary_path}')
+                WHERE assembly_accession IN (SELECT assembly_id FROM asm_lookup)
+            """).pl()
+            con.close()
 
-        if df_with_asm.height > 0:
-            asm_meta = mapping_df.select(
-                [
-                    pl.col("assembly_id"),
-                    "sequence_length",
+            if asm_meta.height > 0:
+                df = df.join(asm_meta, on="assembly_id", how="left", suffix="_asmmeta")
+                for col in [
                     "taxid",
                     "group",
                     "species_taxid",
                     "organism_name",
                     "infraspecific_name",
                     "assembly_level",
-                ]
-            ).unique(subset=["assembly_id"], keep="first")
-            df_with_asm = df_with_asm.join(asm_meta, on="assembly_id", how="left", suffix="_asm")
-            for col in [
-                "sequence_length",
-                "taxid",
-                "group",
-                "species_taxid",
-                "organism_name",
-                "infraspecific_name",
-                "assembly_level",
-            ]:
-                src = f"{col}_asm"
-                if src in df_with_asm.columns:
-                    df_with_asm = df_with_asm.with_columns(
-                        pl.when(pl.col(col).is_null())
-                        .then(pl.col(src))
-                        .otherwise(pl.col(col))
-                        .alias(col)
-                    ).drop(src)
-
-        if df_no_asm.height > 0:
-            df_no_asm = df_no_asm.join(
-                gcf_map,
-                left_on="nucleotide_id",
-                right_on="nucleotide_id",
-                how="left",
-                suffix="_gcf",
-            )
-            df_no_asm = df_no_asm.join(
-                gcf_map,
-                left_on="nucleotide_id_no_prefix",
-                right_on="nucleotide_id_no_prefix",
-                how="left",
-                suffix="_gcfnp",
-            )
-
-            for col in [
-                "assembly_id",
-                "sequence_length",
-                "taxid",
-                "group",
-                "species_taxid",
-                "organism_name",
-                "infraspecific_name",
-                "assembly_level",
-            ]:
-                for suffix_col in ("_gcf", "_gcfnp"):
-                    src = f"{col}{suffix_col}"
-                    if src in df_no_asm.columns:
-                        df_no_asm = df_no_asm.with_columns(
+                ]:
+                    src = f"{col}_asmmeta"
+                    if src in df.columns:
+                        df = df.with_columns(
                             pl.when(pl.col(col).is_null())
                             .then(pl.col(src))
                             .otherwise(pl.col(col))
                             .alias(col)
                         ).drop(src)
 
-            df_no_asm = df_no_asm.join(gca_map, on="nucleotide_id", how="left", suffix="_gca")
-            for col in gca_map.columns:
-                if col != "nucleotide_id" and f"{col}_gca" in df_no_asm.columns:
-                    df_no_asm = df_no_asm.with_columns(
-                        pl.when(pl.col(col).is_null())
-                        .then(pl.col(f"{col}_gca"))
-                        .otherwise(pl.col(col))
-                        .alias(col)
-                    ).drop(f"{col}_gca")
+        except Exception as e:
+            warn(f"Failed assembly_summary join in _fetch_nucleotide_data: {e}")
 
-        if has_asm_mask.any():
-            all_cols = sorted(set(df_with_asm.columns) | set(df_no_asm.columns))
-
-            dtype_map = {col: df_with_asm[col].dtype for col in df_with_asm.columns}
-            for col in df_no_asm.columns:
-                dtype_map.setdefault(col, df_no_asm[col].dtype)
-
-            def _align(df_part: pl.DataFrame, cols: list[str]) -> pl.DataFrame:
-                missing = [c for c in cols if c not in df_part.columns]
-                if missing:
-                    df_part = df_part.with_columns(
-                        [pl.lit(None).cast(dtype_map[c]).alias(c) for c in missing]
-                    )
-                return df_part.select(cols)
-
-            df = pl.concat(
-                [
-                    _align(df_with_asm, all_cols),
-                    _align(df_no_asm, all_cols),
-                ],
-                how="vertical",
-            )
-
-        if "source" in df.columns:
-            gca_override = gca_map.with_columns(
-                pl.col("nucleotide_id").str.replace(r"^[A-Z]{2}_", "").alias("nuc_gca_no_prefix")
-            ).select(
-                [
-                    pl.col("nucleotide_id").alias("nuc_gca_full"),
-                    pl.col("nuc_gca_no_prefix"),
-                    pl.col("assembly_id").alias("assembly_id_gca_override"),
-                    pl.col("sequence_length").alias("sequence_length_gca_override"),
-                    pl.col("taxid").alias("taxid_gca_override"),
-                    pl.col("group").alias("group_gca_override"),
-                    pl.col("species_taxid").alias("species_taxid_gca_override"),
-                    pl.col("organism_name").alias("organism_name_gca_override"),
-                    pl.col("infraspecific_name").alias("infraspecific_name_gca_override"),
-                    pl.col("assembly_level").alias("assembly_level_gca_override"),
-                ]
-            )
-            df = df.join(
-                gca_override,
-                left_on="nucleotide_id",
-                right_on="nuc_gca_full",
-                how="left",
-                suffix="_gcaovr",
-            )
-            df = df.join(
-                gca_override,
-                left_on="nucleotide_id_no_prefix",
-                right_on="nuc_gca_no_prefix",
-                how="left",
-                suffix="_gcaovrnp",
-            )
-
-            override_cols = [
-                "assembly_id",
-                "sequence_length",
-                "taxid",
-                "group",
-                "species_taxid",
-                "organism_name",
-                "infraspecific_name",
-                "assembly_level",
-            ]
-            for base in override_cols:
-                for src in (f"{base}_gca_override", f"{base}_gca_override_gcaovrnp"):
-                    if src in df.columns:
-                        df = df.with_columns(
-                            pl.when((pl.col("source") == "INSDC") & pl.col(src).is_not_null())
-                            .then(pl.col(src))
-                            .otherwise(pl.col(base))
-                            .alias(base)
-                        ).drop(src)
-
+    # Fallback: still missing sequence_length? -> fetch via edirect helper
     missing_mask = df.select(pl.col("sequence_length").is_null()).to_series()
     if missing_mask.any():
         to_fetch = df.filter(missing_mask).select("nucleotide_id").unique().to_series().to_list()
@@ -565,21 +438,28 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
                     df.filter(pl.col("assembly_id").is_not_null())
                     .select("assembly_id")
                     .unique()
-                    .to_series()
-                    .to_list()
                 )
-                if new_asms:
+                if new_asms.height > 0:
                     try:
-                        ids_asm = pl.DataFrame({"assembly_accession": new_asms})
-                        summary2 = safe_collect(
-                            pl.scan_parquet(summary_path).join(
-                                ids_asm.lazy(), on="assembly_accession", how="inner"
-                            )
-                        )
+                        # Use DuckDB for backfill lookup
+                        new_asm_list = new_asms["assembly_id"].to_list()
+                        
+                        con = duckdb.connect(":memory:")
+                        con.execute('SET memory_limit = "4GB"')
+                        con.execute("CREATE TEMP TABLE new_asm_lookup (assembly_id VARCHAR)")
+                        con.executemany("INSERT INTO new_asm_lookup VALUES (?)", [(a,) for a in new_asm_list])
+                        
+                        summary2 = con.execute(f"""
+                            SELECT 
+                                assembly_accession as assembly_id,
+                                taxid,
+                                "group"
+                            FROM read_parquet('{summary_path}')
+                            WHERE assembly_accession IN (SELECT assembly_id FROM new_asm_lookup)
+                        """).pl()
+                        con.close()
+                        
                         if summary2.height > 0:
-                            summary2 = summary2.select(
-                                ["assembly_accession", "taxid", "group"]
-                            ).rename({"assembly_accession": "assembly_id"})
                             df = df.join(summary2, on="assembly_id", how="left", suffix="_backfill")
                             for col in ["taxid", "group"]:
                                 if f"{col}_backfill" in df.columns:
@@ -592,6 +472,7 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
                     except Exception as e:
                         warn(f"Failed backfill join: {e}")
 
+    # Fill coordinates for nucleotide inputs if missing
     cond = (
         (pl.col("input_type") == "nucleotide")
         & (pl.col("nucleotide_id").is_not_null())

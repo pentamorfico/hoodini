@@ -159,7 +159,7 @@ hoodini download Download required databases
 | `--deffinder` | Detect defense systems with DefenseFinder |
 | `--cctyper` | Type CRISPR-Cas systems |
 | `--genomad` | Identify mobile genetic elements |
-| `--ncrna` | Predict non-coding RNAs with Infernal |
+| `--ncrna FILE` | Predict ncRNAs with Infernal using custom CM models file (e.g., Rfam.cm) |
 | `--domains LIST` | Search domain databases (comma-separated) |
 
 ### Performance
@@ -243,9 +243,9 @@ If you use hoodini in your research, please cite:
 
 Hoodini is heavily inspired by the work of several excellent tools in the field. We encourage you to check them out:
 
-- [GCsnap](https://github.com/JoanaMPereira/GCsnap) — Gene context visualization
+- [GCsnap](https://github.com/JoanaMPereira/GCsnap) — Gene context visualization with interactive output
 - [FlaGs](https://github.com/GCA-VH-lab/FlaGs) — Flanking genes analysis
-- [Taxonium](https://github.com/theosanderson/taxonium) — Large tree visualization
+- [Taxonium](https://github.com/theosanderson/taxonium) — Large trees interactive visualization
 - [clinker & clustermap.js](https://github.com/gamcil/clinker) — Gene cluster comparison
 - [gggenes](https://github.com/wilkox/gggenes) — Gene arrow maps in R
 - [gggenomes](https://github.com/thackl/gggenomes) — Comparative genomics visualization
