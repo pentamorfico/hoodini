@@ -51,6 +51,7 @@ def initialize_inputs(
     """
 
     check_assembly_db()
+    check_contig_lengths_db()
 
     if output:
         output_folder = Path(output)
@@ -139,3 +140,43 @@ def check_assembly_db() -> None:
             return
     except Exception as e:
         error(f"Error checking or downloading assembly DB: {e}")
+
+
+def check_contig_lengths_db() -> None:
+    """
+    Check if contig_lengths parquet files exist and download if missing.
+    Downloads from remote storage if no local files are found.
+    """
+    REMOTE_URL = "https://storage.hoodini.bio/contig_lengths.parquet"
+    
+    try:
+        contig_dir = files("hoodini").joinpath("data", "contig_lengths")
+        
+        # Check if any parquet files exist in the directory
+        parquet_files = list(contig_dir.glob("*.parquet")) if contig_dir.exists() else []
+        
+        if parquet_files:
+            info(f"📁 Contig lengths DB found: {len(parquet_files)} parquet file(s) in {contig_dir}")
+            return
+        
+        # No files found - download from remote
+        info("📭 No local contig lengths database found. Downloading now...")
+        info("   This may take a few minutes (downloading ~2GB file)...")
+        
+        from hoodini.download.databases import _download_url
+        
+        # Ensure directory exists
+        contig_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Download to contig_lengths.parquet
+        dest = contig_dir / "contig_lengths.parquet"
+        success = _download_url(REMOTE_URL, dest)
+        
+        if success and dest.exists():
+            info(f"✔️  Downloaded contig lengths database to {dest}")
+        else:
+            warn("⚠️  Failed to download contig_lengths.parquet. "
+                 "Run 'hoodini download contig_lengths' manually to retry.")
+            
+    except Exception as e:
+        error(f"Error checking or downloading contig lengths DB: {e}")

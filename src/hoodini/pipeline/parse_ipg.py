@@ -286,7 +286,8 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
         return df
 
     base = files("hoodini").joinpath("data")
-    contig_path = str(base / "contig_lengths" / "contig_lengths.parquet")
+    # Glob pattern matches both single file (contig_lengths.parquet) and partitioned (part-*.parquet)
+    contig_path = str(base / "contig_lengths") + "/*.parquet"
     summary_path = base / "assembly_summary.parquet"
 
     # Ensure target columns exist
