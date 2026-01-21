@@ -29,9 +29,7 @@ def run_nuc2asmlen(accessions):
         raise ValueError("No accessions provided to run_nuc2asmlen")
 
     # Glob pattern matches both single file (contig_lengths.parquet) and partitioned (part-*.parquet)
-    parquet_path = str(
-        files("hoodini").joinpath("data", "contig_lengths")
-    ) + "/*.parquet"
+    parquet_path = str(files("hoodini").joinpath("data", "contig_lengths")) + "/*.parquet"
 
     try:
         import duckdb
