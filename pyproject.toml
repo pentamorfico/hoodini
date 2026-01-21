@@ -31,7 +31,6 @@ dependencies = [
     "diamondonpy",
     "uniprot-id-mapper",
     "alphafetcher",
-    "taxoniq",
     "aria2p",
     "jinja2",
     "mappy",

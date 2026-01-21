@@ -9,8 +9,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="numpy.core.getli
 
 import numpy as np  # noqa: E402
 import polars as pl  # noqa: E402
-import taxoniq  # noqa: E402
 from alphafetcher import AlphaFetcher  # noqa: E402
+from ete3 import NCBITaxa  # noqa: E402
 from scipy.cluster import hierarchy  # noqa: E402
 from scipy.spatial.distance import pdist, squareform  # noqa: E402
 from UniProtMapper import ProtMapper  # noqa: E402
@@ -228,17 +228,26 @@ def _build_leaf_metadata(records: pl.DataFrame, all_neigh: pl.DataFrame) -> pl.D
     )
     all_neigh = all_neigh.with_columns(pl.col("unique_id").cast(pl.Utf8))
 
+    ncbi = NCBITaxa()
     tax_rows = []
     for taxid in records.select("taxid").unique().to_series().to_list():
         try:
-            t = taxoniq.Taxon(int(str(taxid)))
+            tid = int(str(taxid))
+            lineage = ncbi.get_lineage(tid)
+            if lineage is None:
+                lineage = ncbi.get_lineage(32644)
+                tid = 32644
         except Exception:
-            t = taxoniq.Taxon(32644)
+            lineage = ncbi.get_lineage(32644)
+            tid = 32644
         row = {"taxid": str(taxid)}
-        for r in t.ranked_lineage:
-            rank_name = r.rank.name
-            if rank_name in taxcols:
-                row[rank_name] = r.scientific_name
+        if lineage:
+            ranks = ncbi.get_rank(lineage)
+            names = ncbi.get_taxid_translator(lineage)
+            for ltid in lineage:
+                rank_name = ranks.get(ltid, "")
+                if rank_name in taxcols:
+                    row[rank_name] = names.get(ltid, "")
         for c in taxcols:
             row.setdefault(c, None)
         tax_rows.append(row)
@@ -801,22 +810,23 @@ def _linkage_to_newick(linkage, labels):
 
 
 def calculate_taxid_distances(taxids, update_db=False):
-    """Calculate pairwise taxonomic distances between taxids using taxoniq.
+    """Calculate pairwise taxonomic distances between taxids using ete3.
 
     Distance is computed as the number of steps to the lowest common ancestor (LCA)
     from both taxa combined.
     """
     import itertools
 
+    ncbi = NCBITaxa()
     taxids_int = [int(taxid) for taxid in taxids]
 
     # Build lineage cache for each taxid
     lineage_cache = {}
     for taxid in taxids_int:
         try:
-            t = taxoniq.Taxon(taxid)
-            # Get full lineage as list of taxids (from species up to root)
-            lineage_cache[taxid] = [ancestor.tax_id for ancestor in t.lineage]
+            lineage = ncbi.get_lineage(taxid)
+            # get_lineage returns lineage from root to taxid, reverse it
+            lineage_cache[taxid] = list(reversed(lineage)) if lineage else [taxid, 1]
         except Exception:
             # Fallback to unclassified if taxid not found
             lineage_cache[taxid] = [taxid, 1]  # 1 is root
