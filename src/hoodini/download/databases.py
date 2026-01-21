@@ -14,6 +14,45 @@ EGGNOG_PROTS = "https://storage.hoodini.bio/eggnog_prots.parquet"
 CONTIGS_URL = "https://storage.hoodini.bio/contig_lengths.parquet"
 
 
+def _padloc_db_exists() -> bool:
+    """Check if padloc database is installed by looking for HMM files.
+
+    Padloc stores its database relative to its binary: $(dirname $(which padloc))/../data
+    """
+    padloc_bin = shutil.which("padloc")
+    if padloc_bin:
+        # padloc stores data in ../data relative to the binary
+        padloc_data = Path(padloc_bin).resolve().parent.parent / "data" / "hmm"
+        if padloc_data.exists() and any(padloc_data.iterdir()):
+            return True
+    return False
+
+
+def _defensefinder_db_exists() -> bool:
+    """Check if defense-finder models are installed.
+
+    Defense-finder stores models in ~/.macsyfinder/models/defense-finder-models/
+    """
+    models_dir = Path.home() / ".macsyfinder" / "models" / "defense-finder-models"
+    return models_dir.exists() and any(models_dir.iterdir())
+
+
+def _genomad_db_exists(genomad_db: Path) -> bool:
+    """Check if genomad database is installed."""
+    # genomad creates a nested genomad_db/genomad_db structure
+    inner_db = genomad_db / "genomad_db"
+    if inner_db.exists():
+        # Check for key database files
+        return (inner_db / "genomad_db").exists() or (inner_db / "genomad_db.index").exists()
+    return False
+
+
+def _typedive_db_exists(data_dir: Path) -> bool:
+    """Check if type_dive (BacDive/PhageDive) database is downloaded."""
+    dive_file = data_dir / "dive_combined.parquet"
+    return dive_file.exists()
+
+
 def _run_cmd(cmd, cwd: Path | None = None):
     try:
         info(f"Running: {' '.join(cmd)}")
@@ -103,6 +142,7 @@ def main(
     skip_emapper: bool = False,
     skip_parquet: bool = False,
     skip_contig_lengths: bool = False,
+    skip_typedive: bool = False,
     num_threads: int = 0,
 ):
     stage_header("Downloading databases and support files", "⬇️")
@@ -113,18 +153,30 @@ def main(
     genomad_db = data_dir.joinpath("genomad_db")
 
     if not skip_padloc:
-        _run_cmd(["padloc", "--db-update"])
+        if force or not _padloc_db_exists():
+            info("Updating padloc database...")
+            _run_cmd(["padloc", "--db-update"])
+        else:
+            info("padloc database already exists; use --force to re-download")
     else:
         info("Skipping padloc DB update (--skip-padloc)")
 
     if not skip_deffinder:
-        _run_cmd(["defense-finder", "update"])
+        if force or not _defensefinder_db_exists():
+            info("Updating defense-finder models...")
+            _run_cmd(["defense-finder", "update"])
+        else:
+            info("defense-finder models already exist; use --force to re-download")
     else:
         info("Skipping defense-finder model install (--skip-deffinder)")
 
     if not skip_genomad:
         genomad_db.mkdir(parents=True, exist_ok=True)
-        _run_cmd(["genomad", "download-database", str(genomad_db)])
+        if force or not _genomad_db_exists(genomad_db):
+            info("Downloading genomad database...")
+            _run_cmd(["genomad", "download-database", str(genomad_db)])
+        else:
+            info("genomad database already exists; use --force to re-download")
     else:
         info("Skipping genomad database download (--skip-genomad)")
 
@@ -179,6 +231,20 @@ def main(
         _download_url(CONTIGS_URL, contig_dest, num_threads=num_threads)
     else:
         info(f"{contig_dest} exists; use --force to re-download")
+
+    # Type Dive (BacDive/PhageDive) database
+    if skip_typedive:
+        info("Skipping type_dive (BacDive/PhageDive) download (--skip-typedive)")
+    elif force or not _typedive_db_exists(data_dir):
+        info("Downloading BacDive/PhageDive databases...")
+        try:
+            from hoodini.download.type_dive import main as type_dive_main
+
+            type_dive_main()
+        except Exception as e:
+            warn(f"Failed to download type_dive databases: {e}")
+    else:
+        info(f"{data_dir / 'dive_combined.parquet'} exists; use --force to re-download")
 
     stage_done("Databases download complete")
 

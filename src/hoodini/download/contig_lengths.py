@@ -123,12 +123,15 @@ def get_missing_contigs_from_summary(
         """
 
         if allowed_assemblies_df is not None:
-            summary_query += " AND assembly_accession IN (SELECT assembly_accession FROM allowed_asm)"
+            summary_query += (
+                " AND assembly_accession IN (SELECT assembly_accession FROM allowed_asm)"
+            )
 
         if all_parquet_files:
             # Query existing contig assemblies and do anti-join
             contig_glob = str(CONTIG_LENGTHS_DIR / "*.parquet")
-            missing_df = con.execute(f"""
+            missing_df = con.execute(
+                f"""
                 WITH summary AS ({summary_query}),
                 existing AS (
                     SELECT DISTINCT CAST(assemblyAccession AS VARCHAR) as assembly_accession
@@ -138,7 +141,8 @@ def get_missing_contigs_from_summary(
                 FROM summary s
                 LEFT JOIN existing e ON s.assembly_accession = e.assembly_accession
                 WHERE e.assembly_accession IS NULL
-            """).pl()
+            """
+            ).pl()
         else:
             console.log("No existing contig_lengths found, will download all")
             missing_df = con.execute(summary_query).pl()
@@ -385,14 +389,16 @@ def download_contig_lengths(
         con = duckdb.connect(":memory:")
         con.execute('SET memory_limit = "4GB"')
         groups_str = ", ".join(f"'{g}'" for g in DEFAULT_GROUPS)
-        candidate_df = con.execute(f"""
+        candidate_df = con.execute(
+            f"""
             SELECT DISTINCT CAST(assembly_accession AS VARCHAR) as assembly_accession
             FROM read_parquet('{str(ASSEMBLY_SUMMARY)}')
             WHERE "group" IN ({groups_str})
               AND ftp_path IS NOT NULL
               AND TRIM(ftp_path) != ''
               AND LOWER(ftp_path) != 'na'
-        """).pl()
+        """
+        ).pl()
         con.close()
         candidate_ids = candidate_df["assembly_accession"].to_list()
 
@@ -435,7 +441,8 @@ def download_contig_lengths(
                     con.register("missing_asm", missing_df)
 
                     # Filter: keep if date is null OR date > remote_date
-                    missing_df = con.execute(f"""
+                    missing_df = con.execute(
+                        f"""
                         SELECT DISTINCT m.assembly_accession
                         FROM missing_asm m
                         LEFT JOIN (
@@ -445,7 +452,8 @@ def download_contig_lengths(
                             FROM read_parquet('{str(ASSEMBLY_SUMMARY)}')
                         ) a ON m.assembly_accession = a.assembly_accession
                         WHERE a.seq_rel_date IS NULL OR a.seq_rel_date > '{remote_date_str}'
-                    """).pl()
+                    """
+                    ).pl()
 
                     console.log(
                         f"Filtered by remote date ({remote_date}): {missing_df.height:,} assemblies remain"

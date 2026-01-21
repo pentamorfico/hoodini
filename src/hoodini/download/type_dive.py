@@ -25,7 +25,7 @@ from rich.text import Text
 
 from hoodini.utils.logging_utils import console
 
-BACDIVE_URL = "https://bacdive.dsmz.de/advsearch/csv?fg%5B0%5D%5Bgc%5D=OR&fg%5B0%5D%5Bfl%5D%5B1%5D%5Bfd%5D=Genome+seq.+accession+number&fg%5B0%5D%5Bfl%5D%5B1%5D%5Bfo%5D=contains&fg%5B0%5D%5Bfl%5D%5B1%5D%5Bfv%5D=%2A&fg%5B0%5D%5Bfl%5D%5B1%5D%5Bfvd%5D=sequence_genomes-sequence_acc-7&fg%5B0%5D%5Bfl%5D%5B2%5D=AND&fg%5B0%5D%5Bfl%5D%5B3%5D%5Bfd%5D=Genome+Sequence+database&fg%5B0%5D%5Bfl%5D%5B3%5D%5Bfv%5D=ncbi&fg%5B0%5D%5Bfl%5D%5B3%5D%5Bfvd%5D=sequence_genomes-source_db-7"
+BACDIVE_URL = "https://bacdive.dsmz.de/advsearch/csv?fg%5B0%5D%5Bgc%5D=OR&fg%5B0%5D%5Bfl%5D%5B1%5D%5Bfd%5D=INSDC+accession&fg%5B0%5D%5Bfl%5D%5B1%5D%5Bfo%5D=contains&fg%5B0%5D%5Bfl%5D%5B1%5D%5Bfv%5D=%2A&fg%5B0%5D%5Bfl%5D%5B1%5D%5Bfvd%5D=sequence_genomes-insdc_acc-7"
 PHAGEDIVE_URL = "https://phagedive.dsmz.de/advsearch/csv?fg%5B0%5D%5Bgc%5D=OR&fg%5B0%5D%5Bfl%5D%5B1%5D%5Bfd%5D=Assembly+accession+number&fg%5B0%5D%5Bfl%5D%5B1%5D%5Bfo%5D=contains&fg%5B0%5D%5Bfl%5D%5B1%5D%5Bfv%5D=%2A&fg%5B0%5D%5Bfl%5D%5B1%5D%5Bfvd%5D=sequence_genome-assembly_accession_number-10"
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -79,7 +79,7 @@ def parse_bacdive_csv(in_path, out_path):
     data_filled = fill_empty_with_previous(data)
     idx_id = header.index("ID")
     idx_strain = header.index("strain_number_header")
-    idx_assembly = header.index("Genome seq. accession number")
+    idx_assembly = header.index("INSDC accession")
     out_header = ["bacdive_id", "collection_id", "assembly_id"]
     out_rows = []
     for row in data_filled:
@@ -232,7 +232,7 @@ def main():
             b_data_filled = fill_empty_with_previous(b_data)
             idx_id = b_header.index("ID")
             idx_strain = b_header.index("strain_number_header")
-            idx_assembly = b_header.index("Genome seq. accession number")
+            idx_assembly = b_header.index("INSDC accession")
             b_rows = []
             for row in b_data_filled:
                 if len(row) < max(idx_id, idx_strain, idx_assembly) + 1:
@@ -272,8 +272,19 @@ def main():
             df_phagedive = df_phagedive.rename({"phagedive_id": "dive_id"})
             df_phagedive = df_phagedive.with_columns([pl.lit("phage").alias("dive_type")])
             df_combined = pl.concat([df_bacdive, df_phagedive], how="vertical_relaxed")
+
+            # Duplicate GCA_ rows with GCF_ equivalents (RefSeq mirrors GenBank)
+            gca_rows = df_combined.filter(pl.col("assembly_id").str.starts_with("GCA_"))
+            gcf_rows = gca_rows.with_columns(
+                pl.col("assembly_id").str.replace("^GCA_", "GCF_").alias("assembly_id")
+            )
+            df_combined = pl.concat([df_combined, gcf_rows], how="vertical_relaxed")
+            logger.info(f"Added {gcf_rows.height} GCF_ mirror rows for GCA_ assemblies")
+
             df_combined.write_parquet(DATA_DIR / "dive_combined.parquet")
-            logger.info(f"Saved combined data to {DATA_DIR / 'dive_combined.parquet'}")
+            logger.info(
+                f"Saved combined data to {DATA_DIR / 'dive_combined.parquet'} ({df_combined.height} rows)"
+            )
             logger.info("DSMZ BacDive/PhageDive download and normalization complete!")
 
     with Live(ProgressAndLogs(), console=console, refresh_per_second=10):

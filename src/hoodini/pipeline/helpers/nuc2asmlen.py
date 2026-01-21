@@ -44,7 +44,8 @@ def run_nuc2asmlen(accessions):
         con.executemany("INSERT INTO lookup VALUES (?)", [(a,) for a in query_accessions])
 
         # Query with efficient semi-join
-        matches = con.execute(f"""
+        matches = con.execute(
+            f"""
             SELECT 
                 genbankAccession,
                 refseqAccession,
@@ -53,7 +54,8 @@ def run_nuc2asmlen(accessions):
             FROM read_parquet('{parquet_path}')
             WHERE genbankAccession IN (SELECT nuc_id FROM lookup)
                OR refseqAccession IN (SELECT nuc_id FROM lookup)
-        """).pl()
+        """
+        ).pl()
 
         con.close()
 

@@ -18,7 +18,6 @@ dependencies = [
     "scipy>=1.11.0",
     "numpy>=1.24.0",
     "pandas",
-    "matplotlib",
     "pyarrow",
     "networkx",
     "ete3",
@@ -28,13 +27,9 @@ dependencies = [
     "httpx",
     "aiohttp",
     "pyhmmer",
-    "diamondonpy",
     "uniprot-id-mapper",
     "alphafetcher",
-    "taxoniq",
-    "aria2p",
     "jinja2",
-    "mdmparis-defense-finder>=2.0.1",
     "mappy",
     "playwright>=1.40.0",
     "nest_asyncio>=1.6.0",
@@ -48,7 +43,7 @@ dependencies = [
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
-    "black>=23.0.0",
+    "black==24.10.0",
     "ruff>=0.1.0",
     "isort>=5.12.0",
     "mypy>=1.5.0",
@@ -104,6 +99,7 @@ ignore = [
 	"B905",
 	"E501",   # Line too long (handled by black)
 	"E741",   # Ambiguous variable name
+	"S608",   # SQL injection (false positive for DuckDB internal queries)
 	"PLR0911", # Too many return statements
 	"PLR0912", # Too many branches
 	"PLR0913", # Too many arguments

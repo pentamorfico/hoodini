@@ -37,4 +37,5 @@ dependencies:
   - gdk-pixbuf
   - fontconfig
   - alsa-lib
+  - defense-finder>=2.0.0
 

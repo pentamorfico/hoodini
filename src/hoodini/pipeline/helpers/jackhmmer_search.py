@@ -67,7 +67,7 @@ def cluster_jackhmmer_results(dicc_hits, min_evalue=1e-10):
         representative = next(iter(group))
         for member in group:
             data.append([representative, member])
-    df = pl.DataFrame(data, columns=["clu_rep_seq", "member"])
+    df = pl.DataFrame(data, schema=["clu_rep_seq", "member"], orient="row")
     return df
 
 

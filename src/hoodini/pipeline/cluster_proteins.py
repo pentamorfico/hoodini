@@ -141,7 +141,12 @@ def cluster_proteins(
             has_header=False,
             new_columns=["qseqid", "sseqid", "bitscore", "evalue", "pident", "length", "qcovs"],
         )
-        df_blast = df_blast[df_blast["qseqid"] != df_blast["sseqid"]]
+        # Filter: remove self-hits, require e-value <= 1e-5 and pident >= 30%
+        df_blast = df_blast.filter(
+            (pl.col("qseqid") != pl.col("sseqid"))
+            & (pl.col("evalue") <= 1e-5)
+            & (pl.col("pident") >= 30.0)
+        )
         parent = {}
 
         def find(x):
@@ -169,7 +174,7 @@ def cluster_proteins(
             rep = sorted(members)[0]
             for m in members:
                 records.append((rep, m))
-        clusterdf = pl.DataFrame(records, columns=["clu_rep_seq", "member"])
+        clusterdf = pl.DataFrame(records, schema=["clu_rep_seq", "member"], orient="row")
 
     else:
         raise ValueError(f"Unsupported clustering method: {clust_method}")

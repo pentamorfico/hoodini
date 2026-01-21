@@ -5,13 +5,7 @@ import sys
 from pathlib import Path
 
 import requests
-from rich.progress import (
-    BarColumn,
-    Progress,
-    TextColumn,
-    TimeRemainingColumn,
-    TransferSpeedColumn,
-)
+from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn, TransferSpeedColumn
 
 
 def download_with_aria2c(

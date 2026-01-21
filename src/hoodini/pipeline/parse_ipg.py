@@ -160,35 +160,49 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
 
     try:
         dive_path = str(files("hoodini").joinpath("data", "dive_combined.parquet"))
-        
+
+        # Strip version suffix from assembly IDs for matching (e.g., GCA_001761385.1 -> GCA_001761385)
+        # dive_combined.parquet uses assembly IDs without version suffixes
+        assemblies_stripped = [a.rsplit(".", 1)[0] if "." in a else a for a in assemblies]
+
         # Use DuckDB for memory-efficient join
         con = duckdb.connect(":memory:")
         con.execute('SET memory_limit = "4GB"')
         con.execute("CREATE TEMP TABLE asm_lookup (assembly_id VARCHAR)")
-        con.executemany("INSERT INTO asm_lookup VALUES (?)", [(a,) for a in assemblies])
-        
-        ts = con.execute(f"""
+        con.executemany("INSERT INTO asm_lookup VALUES (?)", [(a,) for a in assemblies_stripped])
+
+        ts = con.execute(
+            f"""
             SELECT d.*
             FROM read_parquet('{dive_path}') d
             WHERE d.assembly_id IN (SELECT assembly_id FROM asm_lookup)
-        """).pl()
+        """
+        ).pl()
         con.close()
-        
+
         if ts.height > 0:
-            ipg_df = ipg_df.join(ts, left_on="assembly", right_on="assembly_id", how="left")
+            # Add stripped assembly column for joining
+            ipg_df = ipg_df.with_columns(
+                pl.col("assembly").str.replace(r"\.\d+$", "").alias("assembly_stripped")
+            )
+            ipg_df = ipg_df.join(
+                ts, left_on="assembly_stripped", right_on="assembly_id", how="left"
+            )
+            ipg_df = ipg_df.drop("assembly_stripped")
     except Exception as e:
         warn(f"Skipping dive_combined.parquet: {e}")
 
     try:
         summary_path = str(files("hoodini").joinpath("data", "assembly_summary.parquet"))
-        
+
         # Use DuckDB for memory-efficient join
         con = duckdb.connect(":memory:")
         con.execute('SET memory_limit = "4GB"')
         con.execute("CREATE TEMP TABLE asm_lookup2 (assembly_accession VARCHAR)")
         con.executemany("INSERT INTO asm_lookup2 VALUES (?)", [(a,) for a in assemblies])
-        
-        summary = con.execute(f"""
+
+        summary = con.execute(
+            f"""
             SELECT 
                 assembly_accession,
                 taxid,
@@ -199,9 +213,10 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
                 "group"
             FROM read_parquet('{summary_path}')
             WHERE assembly_accession IN (SELECT assembly_accession FROM asm_lookup2)
-        """).pl()
+        """
+        ).pl()
         con.close()
-        
+
         if summary.height > 0:
             ipg_df = ipg_df.join(
                 summary, left_on="assembly", right_on="assembly_accession", how="left"
@@ -263,13 +278,7 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
     if "nucleotide_id" not in df.columns:
         return df
 
-    nucs = (
-        df.select("nucleotide_id")
-        .unique()
-        .to_series()
-        .drop_nulls()
-        .to_list()
-    )
+    nucs = df.select("nucleotide_id").unique().to_series().drop_nulls().to_list()
     nucs = [n for n in nucs if str(n).strip()]
 
     if not nucs:
@@ -317,7 +326,8 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
         con.executemany("INSERT INTO lookup VALUES (?)", [(n,) for n in nucs])
 
         # Query parquet with semi-join - DuckDB handles this efficiently
-        result_df = con.execute(f"""
+        result_df = con.execute(
+            f"""
             SELECT nucleotide_id, assembly_id, sequence_length FROM (
                 SELECT genbankAccession as nucleotide_id,
                        assemblyAccession as assembly_id,
@@ -331,7 +341,8 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
                 FROM read_parquet('{contig_path}')
                 WHERE refseqAccession IN (SELECT nuc_id FROM lookup)
             )
-        """).pl()
+        """
+        ).pl()
 
         # Deduplicate
         nuc_map = result_df.unique(subset=["nucleotide_id"], keep="first")
@@ -357,23 +368,20 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
                 ).drop(src)
 
     # Enrich assembly metadata ONLY for the assemblies we have
-    asms = (
-        df.filter(pl.col("assembly_id").is_not_null())
-        .select("assembly_id")
-        .unique()
-    )
+    asms = df.filter(pl.col("assembly_id").is_not_null()).select("assembly_id").unique()
 
     if asms.height > 0:
         try:
             # Use DuckDB for memory-efficient assembly metadata lookup
             asm_list = asms["assembly_id"].to_list()
-            
+
             con = duckdb.connect(":memory:")
             con.execute('SET memory_limit = "4GB"')
             con.execute("CREATE TEMP TABLE asm_lookup (assembly_id VARCHAR)")
             con.executemany("INSERT INTO asm_lookup VALUES (?)", [(a,) for a in asm_list])
-            
-            asm_meta = con.execute(f"""
+
+            asm_meta = con.execute(
+                f"""
                 SELECT 
                     assembly_accession as assembly_id,
                     taxid,
@@ -384,7 +392,8 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
                     "group"
                 FROM read_parquet('{summary_path}')
                 WHERE assembly_accession IN (SELECT assembly_id FROM asm_lookup)
-            """).pl()
+            """
+            ).pl()
             con.close()
 
             if asm_meta.height > 0:
@@ -436,30 +445,32 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
                         ).drop(f"{col}_edirect")
 
                 new_asms = (
-                    df.filter(pl.col("assembly_id").is_not_null())
-                    .select("assembly_id")
-                    .unique()
+                    df.filter(pl.col("assembly_id").is_not_null()).select("assembly_id").unique()
                 )
                 if new_asms.height > 0:
                     try:
                         # Use DuckDB for backfill lookup
                         new_asm_list = new_asms["assembly_id"].to_list()
-                        
+
                         con = duckdb.connect(":memory:")
                         con.execute('SET memory_limit = "4GB"')
                         con.execute("CREATE TEMP TABLE new_asm_lookup (assembly_id VARCHAR)")
-                        con.executemany("INSERT INTO new_asm_lookup VALUES (?)", [(a,) for a in new_asm_list])
-                        
-                        summary2 = con.execute(f"""
+                        con.executemany(
+                            "INSERT INTO new_asm_lookup VALUES (?)", [(a,) for a in new_asm_list]
+                        )
+
+                        summary2 = con.execute(
+                            f"""
                             SELECT 
                                 assembly_accession as assembly_id,
                                 taxid,
                                 "group"
                             FROM read_parquet('{summary_path}')
                             WHERE assembly_accession IN (SELECT assembly_id FROM new_asm_lookup)
-                        """).pl()
+                        """
+                        ).pl()
                         con.close()
-                        
+
                         if summary2.height > 0:
                             df = df.join(summary2, on="assembly_id", how="left", suffix="_backfill")
                             for col in ["taxid", "group"]:
