@@ -12,7 +12,7 @@ import polars as pl
 
 from hoodini.config import RuntimeConfig
 from hoodini.utils.logging_utils import stage_done, stage_header
-from hoodini.utils.memory_utils import get_tracker, reset_tracker
+from hoodini.utils.memory_utils import reset_tracker
 
 log = logging.getLogger(__name__)
 
@@ -328,11 +328,22 @@ def _run_pipeline_stages(config: RuntimeConfig, tracker) -> None:
 
             if emapper_df.height > 0:
                 if "description" in emapper_df.columns and "product" in all_prots.columns:
-                    desc_map = emapper_df.set_index("id")["description"].to_dict()
-                    all_prots["product"] = all_prots["product"].where(
-                        all_prots["product"].notna()
-                        & (all_prots["product"].astype(str).str.strip() != ""),
-                        all_prots["id"].map(desc_map),
+                    # Create a mapping from id to description
+                    desc_map = dict(
+                        zip(
+                            emapper_df["id"].to_list(),
+                            emapper_df["description"].to_list(),
+                        )
+                    )
+                    # Fill empty/null products with emapper descriptions
+                    all_prots = all_prots.with_columns(
+                        pl.when(
+                            pl.col("product").is_null()
+                            | (pl.col("product").cast(pl.Utf8).str.strip_chars() == "")
+                        )
+                        .then(pl.col("id").replace_strict(desc_map, default=pl.col("product")))
+                        .otherwise(pl.col("product"))
+                        .alias("product")
                     )
 
                 if "id" in emapper_df.columns and "id" in all_prots.columns:
@@ -372,7 +383,9 @@ def _run_pipeline_stages(config: RuntimeConfig, tracker) -> None:
         if config.ncrna:
             from hoodini.extra_tools.ncrna import run_ncrna
 
-            ncrna_data = run_ncrna(all_neigh, den_data, config.output, config.num_threads, valid_uids, config.ncrna)
+            ncrna_data = run_ncrna(
+                all_neigh, den_data, config.output, config.num_threads, valid_uids, config.ncrna
+            )
             if ncrna_data.height > 0:
                 gff_df = ncrna_data.select(
                     [

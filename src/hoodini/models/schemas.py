@@ -92,6 +92,10 @@ RECORDS = TableSchema(
         "taxid": pl.Int64,
         "assembly_id": pl.Utf8,
         "premade": pl.Boolean,
+        # DSMZ BacDive/PhageDive columns
+        "dive_id": pl.Utf8,
+        "collection_id": pl.Utf8,
+        "dive_type": pl.Utf8,
     },
 )
 

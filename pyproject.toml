@@ -34,7 +34,6 @@ dependencies = [
     "taxoniq",
     "aria2p",
     "jinja2",
-    "mdmparis-defense-finder>=2.0.1",
     "mappy",
     "playwright>=1.40.0",
     "nest_asyncio>=1.6.0",
@@ -104,6 +103,7 @@ ignore = [
 	"B905",
 	"E501",   # Line too long (handled by black)
 	"E741",   # Ambiguous variable name
+	"S608",   # SQL injection (false positive for DuckDB internal queries)
 	"PLR0911", # Too many return statements
 	"PLR0912", # Too many branches
 	"PLR0913", # Too many arguments

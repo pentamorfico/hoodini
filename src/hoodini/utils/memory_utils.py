@@ -94,8 +94,7 @@ class MemoryTracker:
             current = get_current_memory_mb()
             with self._lock:
                 self.stats.current_mb = current
-                if current > self.stats.peak_mb:
-                    self.stats.peak_mb = current
+                self.stats.peak_mb = max(self.stats.peak_mb, current)
             time.sleep(self.poll_interval)
 
     @contextmanager
@@ -115,8 +114,7 @@ class MemoryTracker:
             nonlocal peak_during_stage
             while not stage_stop.is_set():
                 current = get_current_memory_mb()
-                if current > peak_during_stage:
-                    peak_during_stage = current
+                peak_during_stage = max(peak_during_stage, current)
                 time.sleep(self.poll_interval)
 
         monitor = threading.Thread(target=stage_monitor, daemon=True)
@@ -131,8 +129,7 @@ class MemoryTracker:
 
             with self._lock:
                 self.stats.stage_stats[stage_name] = peak_during_stage
-                if peak_during_stage > self.stats.peak_mb:
-                    self.stats.peak_mb = peak_during_stage
+                self.stats.peak_mb = max(self.stats.peak_mb, peak_during_stage)
 
             delta = end_mem - start_mem
             delta_str = f"+{delta:.1f}" if delta >= 0 else f"{delta:.1f}"

@@ -214,7 +214,7 @@ def _read_fasta(filename: str) -> pl.DataFrame:
         records = file.read().split(">")[1:]
         records = [record.split("\n", 1) for record in records]
         records = [(t[0].split(" ")[0], "".join(t[1].split())) for t in records]
-    return pl.DataFrame(records, schema=["id", "sequence"])
+    return pl.DataFrame(records, schema=["id", "sequence"], orient="row")
 
 
 def compute_window(

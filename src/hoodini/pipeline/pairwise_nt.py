@@ -166,7 +166,7 @@ def _write_intergenic_fasta(
                     }
                 )
 
-    return pl.DataFrame(meta_rows, columns=["temp_seqid", "seqid", "start_win"])
+    return pl.DataFrame(meta_rows, schema=["temp_seqid", "seqid", "start_win"], orient="row")
 
 
 def _skani_like_from_blast(

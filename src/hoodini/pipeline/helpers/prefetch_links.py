@@ -105,7 +105,7 @@ _LOCAL_ASM_MAP: dict | None = None
 def _load_local_assembly_map() -> dict:
     """Load mapping assembly_accession -> ftp_path from packaged parquet file.
 
-    Uses DuckDB for memory-efficient querying. Returns empty dict if the file 
+    Uses DuckDB for memory-efficient querying. Returns empty dict if the file
     is missing or cannot be read.
     """
     global _LOCAL_ASM_MAP
@@ -116,17 +116,19 @@ def _load_local_assembly_map() -> dict:
         if not path.exists():
             _LOCAL_ASM_MAP = {}
             return _LOCAL_ASM_MAP
-        
+
         con = duckdb.connect(":memory:")
         con.execute('SET memory_limit = "4GB"')
-        df = con.execute(f"""
+        df = con.execute(
+            f"""
             SELECT 
                 CAST(assembly_accession AS VARCHAR) as assembly_accession,
                 CAST(ftp_path AS VARCHAR) as ftp_path
             FROM read_parquet('{str(path)}')
-        """).pl()
+        """
+        ).pl()
         con.close()
-        
+
         _LOCAL_ASM_MAP = dict(
             zip(
                 df["assembly_accession"].to_list(),

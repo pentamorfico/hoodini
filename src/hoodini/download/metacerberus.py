@@ -82,7 +82,7 @@ def check_downloaded(groups):
 def parse_pfam_dat_to_tsv(dat_gz_path: Path, tsv_path: Path):
     """
     Parse Pfam-A.hmm.dat.gz Stockholm format and convert to TSV.
-    
+
     Input format (Stockholm):
         # STOCKHOLM 1.0
         #=GF ID   2-Hacid_dh_C
@@ -90,19 +90,19 @@ def parse_pfam_dat_to_tsv(dat_gz_path: Path, tsv_path: Path):
         #=GF DE   D-isomer specific 2-hydroxyacid dehydrogenase, NAD binding domain
         #=GF CL   CL0063
         //
-    
+
     Output format (TSV):
         ID	Function	Clan	Accession
         2-Hacid_dh_C	D-isomer specific 2-hydroxyacid dehydrogenase, NAD binding domain	CL0063	PF02826
-    
+
     Note: ID column uses the Gene name (from #=GF ID) because HMMER uses NAME field
     as domain_id, which corresponds to the gene name, not the PF accession.
     """
     logger.info(f"Parsing Pfam dat file: {dat_gz_path}")
-    
+
     entries = []
     current = {}
-    
+
     with gzip.open(dat_gz_path, "rt", encoding="utf-8") as f:
         for line in f:
             line = line.rstrip("\n")
@@ -122,38 +122,42 @@ def parse_pfam_dat_to_tsv(dat_gz_path: Path, tsv_path: Path):
             elif line == "//":
                 # End of entry
                 if "ID" in current:
-                    entries.append({
-                        "ID": current.get("ID", ""),
-                        "Function": current.get("Function", ""),
-                        "Clan": current.get("Clan", ""),
-                        "Accession": current.get("Accession", ""),
-                    })
+                    entries.append(
+                        {
+                            "ID": current.get("ID", ""),
+                            "Function": current.get("Function", ""),
+                            "Clan": current.get("Clan", ""),
+                            "Accession": current.get("Accession", ""),
+                        }
+                    )
                 current = {}
-    
+
     # Write TSV
     with open(tsv_path, "w", encoding="utf-8") as out:
         out.write("ID\tFunction\tClan\tAccession\n")
         for entry in entries:
-            out.write(f"{entry['ID']}\t{entry['Function']}\t{entry['Clan']}\t{entry['Accession']}\n")
-    
+            out.write(
+                f"{entry['ID']}\t{entry['Function']}\t{entry['Clan']}\t{entry['Accession']}\n"
+            )
+
     logger.info(f"Wrote {len(entries)} Pfam entries to {tsv_path}")
 
 
 def download_pfam_direct(force=False):
     """Download Pfam HMM and dat files directly from EBI FTP and create TSV."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     hmm_dest = DATA_DIR / "Pfam.hmm.gz"
     tsv_dest = DATA_DIR / "Pfam.tsv"
-    
+
     # Check if already downloaded
     if not force and hmm_dest.exists() and tsv_dest.exists():
         info("Pfam files already present!")
         return
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Download HMM file
         if force or not hmm_dest.exists():
             logger.info(f"Downloading Pfam HMM from {PFAM_HMM_URL}")
@@ -162,7 +166,7 @@ def download_pfam_direct(force=False):
             if downloaded_hmm.exists():
                 shutil.move(str(downloaded_hmm), str(hmm_dest))
                 logger.info(f"Saved HMM to {hmm_dest}")
-        
+
         # Download dat file and convert to TSV
         if force or not tsv_dest.exists():
             logger.info(f"Downloading Pfam dat from {PFAM_DAT_URL}")
@@ -170,7 +174,7 @@ def download_pfam_direct(force=False):
             downloaded_dat = tmpdir / "Pfam-A.hmm.dat.gz"
             if downloaded_dat.exists():
                 parse_pfam_dat_to_tsv(downloaded_dat, tsv_dest)
-    
+
     info("Pfam download complete!")
 
 
@@ -208,20 +212,18 @@ def main(selected=None, force=False):
     stage_header("MetaCerberus Databases", "🧬")
     files = list_db_files()
     groups = get_db_groups(files)
-    
+
     # Remove pfam from OSF groups - we'll handle it separately
     groups.pop("pfam", None)
-    
+
     # Add pfam with local file paths for status display
-    pfam_hmm = DATA_DIR / "Pfam.hmm.gz"
-    pfam_tsv = DATA_DIR / "Pfam.tsv"
     groups["pfam"] = [
         {"name": "Pfam.hmm.gz", "download": PFAM_HMM_URL, "size": None},
         {"name": "Pfam.tsv", "download": PFAM_DAT_URL, "size": None},
     ]
-    
+
     status = check_downloaded(groups)
-    
+
     if selected is None or selected == "all":
         table = Table(title="MetaCerberus Databases", show_lines=True)
         table.add_column("Database", style="bold cyan")
@@ -245,14 +247,14 @@ def main(selected=None, force=False):
             table.add_row(group, hmm, tsv, source)
         console.print(table)
         return
-    
+
     wanted = [s.strip().lower() for s in selected.split(",") if s.strip()]
-    
+
     # Handle pfam separately
     if "pfam" in wanted:
         download_pfam_direct(force=force)
         wanted.remove("pfam")
-    
+
     # Handle other databases from OSF
     if wanted:
         to_download = [f for g in wanted for f in groups.get(g, [])]
