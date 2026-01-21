@@ -262,7 +262,12 @@ def _build_leaf_metadata(records: pl.DataFrame, all_neigh: pl.DataFrame) -> pl.D
         ]
     )
 
-    den_data = records.select(["unique_id", "og_index"] + taxcols)
+    # Include dive columns (BacDive/PhageDive) if present
+    dive_cols = ["dive_id", "collection_id", "dive_type"]
+    base_cols = ["unique_id", "og_index"] + taxcols
+    extra_cols = [c for c in dive_cols if c in records.columns]
+    
+    den_data = records.select(base_cols + extra_cols)
     den_data = den_data.join(
         all_neigh.select(
             ["unique_id", "start_win", "end_win", "strand_win", "start_target", "end_target"]

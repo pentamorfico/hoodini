@@ -383,6 +383,9 @@ def download_contig_lengths(api_key, skip_assembly_summary):
     "--skip-contig-lengths", is_flag=True, help="Skip downloading contig_lengths.parquet."
 )
 @click.option(
+    "--skip-typedive", is_flag=True, help="Skip downloading BacDive/PhageDive databases."
+)
+@click.option(
     "--threads",
     "num_threads",
     type=int,
@@ -397,6 +400,7 @@ def download_databases(
     skip_emapper,
     skip_parquet,
     skip_contig_lengths,
+    skip_typedive,
     num_threads,
 ):
     """Download support databases used by some extra tools (emapper, PADLOC models, etc.)"""
@@ -410,6 +414,7 @@ def download_databases(
         skip_emapper=skip_emapper,
         skip_parquet=skip_parquet,
         skip_contig_lengths=skip_contig_lengths,
+        skip_typedive=skip_typedive,
         num_threads=num_threads,
     )
 

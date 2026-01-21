@@ -329,15 +329,18 @@ def write_viz_outputs(
             parquet_dir / "protein_metadata.parquet"
         )
 
-    tree_headers = "leaf_id\tog_index\tsuperkingdom\tkingdom\tphylum\tclass\torder\tfamily\tgenus\tspecies\tstart_win\tend_win\tstrand_win\tstart_target\tend_target\n"
+    base_tree_cols = ["leaf_id", "og_index", "superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species", "start_win", "end_win", "strand_win", "start_target", "end_target"]
     if den_data is not None and den_data.height > 0:
         tree_meta = den_data.clone()
         if "unique_id" in tree_meta.columns:
             tree_meta = tree_meta.rename({"unique_id": "leaf_id"})
+        # Include all columns (base + any extras like dive_id, collection_id, dive_type)
+        tree_headers = "\t".join(tree_meta.columns) + "\n"
         csv_data = tree_meta.write_csv(separator="\t", include_header=False)
         (tsv_dir / "tree_metadata.txt").write_text(tree_headers + csv_data, encoding="utf-8")
         tree_meta.write_parquet(parquet_dir / "tree_metadata.parquet")
     else:
+        tree_headers = "\t".join(base_tree_cols) + "\n"
         (tsv_dir / "tree_metadata.txt").write_text(tree_headers, encoding="utf-8")
         pl.DataFrame().write_parquet(parquet_dir / "tree_metadata.parquet")
 

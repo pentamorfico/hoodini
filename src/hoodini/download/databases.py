@@ -47,6 +47,12 @@ def _genomad_db_exists(genomad_db: Path) -> bool:
     return False
 
 
+def _typedive_db_exists(data_dir: Path) -> bool:
+    """Check if type_dive (BacDive/PhageDive) database is downloaded."""
+    dive_file = data_dir / "dive_combined.parquet"
+    return dive_file.exists()
+
+
 def _run_cmd(cmd, cwd: Path | None = None):
     try:
         info(f"Running: {' '.join(cmd)}")
@@ -136,6 +142,7 @@ def main(
     skip_emapper: bool = False,
     skip_parquet: bool = False,
     skip_contig_lengths: bool = False,
+    skip_typedive: bool = False,
     num_threads: int = 0,
 ):
     stage_header("Downloading databases and support files", "⬇️")
@@ -224,6 +231,19 @@ def main(
         _download_url(CONTIGS_URL, contig_dest, num_threads=num_threads)
     else:
         info(f"{contig_dest} exists; use --force to re-download")
+
+    # Type Dive (BacDive/PhageDive) database
+    if skip_typedive:
+        info("Skipping type_dive (BacDive/PhageDive) download (--skip-typedive)")
+    elif force or not _typedive_db_exists(data_dir):
+        info("Downloading BacDive/PhageDive databases...")
+        try:
+            from hoodini.download.type_dive import main as type_dive_main
+            type_dive_main()
+        except Exception as e:
+            warn(f"Failed to download type_dive databases: {e}")
+    else:
+        info(f"{data_dir / 'dive_combined.parquet'} exists; use --force to re-download")
 
     stage_done("Databases download complete")
 

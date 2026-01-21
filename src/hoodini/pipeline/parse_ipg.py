@@ -161,11 +161,15 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
     try:
         dive_path = str(files("hoodini").joinpath("data", "dive_combined.parquet"))
         
+        # Strip version suffix from assembly IDs for matching (e.g., GCA_001761385.1 -> GCA_001761385)
+        # dive_combined.parquet uses assembly IDs without version suffixes
+        assemblies_stripped = [a.rsplit(".", 1)[0] if "." in a else a for a in assemblies]
+        
         # Use DuckDB for memory-efficient join
         con = duckdb.connect(":memory:")
         con.execute('SET memory_limit = "4GB"')
         con.execute("CREATE TEMP TABLE asm_lookup (assembly_id VARCHAR)")
-        con.executemany("INSERT INTO asm_lookup VALUES (?)", [(a,) for a in assemblies])
+        con.executemany("INSERT INTO asm_lookup VALUES (?)", [(a,) for a in assemblies_stripped])
         
         ts = con.execute(f"""
             SELECT d.*
@@ -175,7 +179,12 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
         con.close()
         
         if ts.height > 0:
-            ipg_df = ipg_df.join(ts, left_on="assembly", right_on="assembly_id", how="left")
+            # Add stripped assembly column for joining
+            ipg_df = ipg_df.with_columns(
+                pl.col("assembly").str.replace(r"\.\d+$", "").alias("assembly_stripped")
+            )
+            ipg_df = ipg_df.join(ts, left_on="assembly_stripped", right_on="assembly_id", how="left")
+            ipg_df = ipg_df.drop("assembly_stripped")
     except Exception as e:
         warn(f"Skipping dive_combined.parquet: {e}")
 
