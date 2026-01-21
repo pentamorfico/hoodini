@@ -34,7 +34,6 @@ dependencies = [
     "taxoniq",
     "aria2p",
     "jinja2",
-    "mdmparis-defense-finder>=2.0.1",
     "mappy",
     "playwright>=1.40.0",
     "nest_asyncio>=1.6.0",
