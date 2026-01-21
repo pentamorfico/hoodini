@@ -429,10 +429,12 @@ def download_contig_lengths(
                 con.execute('SET memory_limit = "4GB"')
 
                 # Check if seq_rel_date column exists
-                schema_result = con.execute(f"""
+                schema_result = con.execute(
+                    f"""
                     SELECT name FROM parquet_schema('{str(ASSEMBLY_SUMMARY)}')
                     WHERE name = 'seq_rel_date'
-                """).fetchone()
+                """
+                ).fetchone()
 
                 if schema_result:
                     remote_date = remote_last_mod.date()
