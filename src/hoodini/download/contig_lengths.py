@@ -424,18 +424,15 @@ def download_contig_lengths(
 
                 # Check if seq_rel_date column exists
                 schema_result = con.execute(f"""
-                    SELECT column_name FROM parquet_schema('{str(ASSEMBLY_SUMMARY)}')
-                    WHERE column_name = 'seq_rel_date'
+                    SELECT name FROM parquet_schema('{str(ASSEMBLY_SUMMARY)}')
+                    WHERE name = 'seq_rel_date'
                 """).fetchone()
 
                 if schema_result:
                     remote_date = remote_last_mod.date()
                     remote_date_str = remote_date.isoformat()
 
-                    # Create temp table for missing assemblies
-                    missing_list = missing_df["assembly_accession"].to_list()
-                    con.execute("CREATE TEMP TABLE missing_asm (assembly_accession VARCHAR)")
-                    con.executemany("INSERT INTO missing_asm VALUES (?)", [(a,) for a in missing_list])
+                    con.register("missing_asm", missing_df)
 
                     # Filter: keep if date is null OR date > remote_date
                     missing_df = con.execute(f"""
