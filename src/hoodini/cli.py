@@ -382,9 +382,7 @@ def download_contig_lengths(api_key, skip_assembly_summary):
 @click.option(
     "--skip-contig-lengths", is_flag=True, help="Skip downloading contig_lengths.parquet."
 )
-@click.option(
-    "--skip-typedive", is_flag=True, help="Skip downloading BacDive/PhageDive databases."
-)
+@click.option("--skip-typedive", is_flag=True, help="Skip downloading BacDive/PhageDive databases.")
 @click.option(
     "--threads",
     "num_threads",

@@ -266,7 +266,7 @@ def _build_leaf_metadata(records: pl.DataFrame, all_neigh: pl.DataFrame) -> pl.D
     dive_cols = ["dive_id", "collection_id", "dive_type"]
     base_cols = ["unique_id", "og_index"] + taxcols
     extra_cols = [c for c in dive_cols if c in records.columns]
-    
+
     den_data = records.select(base_cols + extra_cols)
     den_data = den_data.join(
         all_neigh.select(
@@ -296,7 +296,13 @@ def _make_tree(records, all_prots, output_dir, threads):
     faa = faa.unique(subset=["unique_id"])
     to_fasta(faa, "unique_id", "sequence", f"{output_dir}/target_prots.fasta")
     subprocess.run(
-        ["famsa", f"{output_dir}/target_prots.fasta", f"{output_dir}/target_prots.aln", "-remove-rare-columns", "0.10"],
+        [
+            "famsa",
+            f"{output_dir}/target_prots.fasta",
+            f"{output_dir}/target_prots.aln",
+            "-remove-rare-columns",
+            "0.10",
+        ],
         check=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

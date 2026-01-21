@@ -272,7 +272,7 @@ def main():
             df_phagedive = df_phagedive.rename({"phagedive_id": "dive_id"})
             df_phagedive = df_phagedive.with_columns([pl.lit("phage").alias("dive_type")])
             df_combined = pl.concat([df_bacdive, df_phagedive], how="vertical_relaxed")
-            
+
             # Duplicate GCA_ rows with GCF_ equivalents (RefSeq mirrors GenBank)
             gca_rows = df_combined.filter(pl.col("assembly_id").str.starts_with("GCA_"))
             gcf_rows = gca_rows.with_columns(
@@ -280,9 +280,11 @@ def main():
             )
             df_combined = pl.concat([df_combined, gcf_rows], how="vertical_relaxed")
             logger.info(f"Added {gcf_rows.height} GCF_ mirror rows for GCA_ assemblies")
-            
+
             df_combined.write_parquet(DATA_DIR / "dive_combined.parquet")
-            logger.info(f"Saved combined data to {DATA_DIR / 'dive_combined.parquet'} ({df_combined.height} rows)")
+            logger.info(
+                f"Saved combined data to {DATA_DIR / 'dive_combined.parquet'} ({df_combined.height} rows)"
+            )
             logger.info("DSMZ BacDive/PhageDive download and normalization complete!")
 
     with Live(ProgressAndLogs(), console=console, refresh_per_second=10):

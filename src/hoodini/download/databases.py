@@ -16,7 +16,7 @@ CONTIGS_URL = "https://storage.hoodini.bio/contig_lengths.parquet"
 
 def _padloc_db_exists() -> bool:
     """Check if padloc database is installed by looking for HMM files.
-    
+
     Padloc stores its database relative to its binary: $(dirname $(which padloc))/../data
     """
     padloc_bin = shutil.which("padloc")
@@ -30,7 +30,7 @@ def _padloc_db_exists() -> bool:
 
 def _defensefinder_db_exists() -> bool:
     """Check if defense-finder models are installed.
-    
+
     Defense-finder stores models in ~/.macsyfinder/models/defense-finder-models/
     """
     models_dir = Path.home() / ".macsyfinder" / "models" / "defense-finder-models"
@@ -239,6 +239,7 @@ def main(
         info("Downloading BacDive/PhageDive databases...")
         try:
             from hoodini.download.type_dive import main as type_dive_main
+
             type_dive_main()
         except Exception as e:
             warn(f"Failed to download type_dive databases: {e}")

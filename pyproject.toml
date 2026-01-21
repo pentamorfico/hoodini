@@ -103,6 +103,7 @@ ignore = [
 	"B905",
 	"E501",   # Line too long (handled by black)
 	"E741",   # Ambiguous variable name
+	"S608",   # SQL injection (false positive for DuckDB internal queries)
 	"PLR0911", # Too many return statements
 	"PLR0912", # Too many branches
 	"PLR0913", # Too many arguments

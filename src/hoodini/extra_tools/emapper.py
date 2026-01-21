@@ -13,7 +13,7 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
     Run mmseqs easy-search, pick best hit per query directly in Polars,
     join to eggNOG metadata, pick the deepest OG per query,
     and return one row per input protein as a Polars DataFrame.
-    
+
     Uses DuckDB for memory-efficient querying of large eggnog_prots.parquet (2.4GB).
     """
 
@@ -122,7 +122,8 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
 
         # Query eggnog_prots with filtering - only get rows we need
         # Then explode OGs in DuckDB which is more memory efficient
-        prots = con.execute(f"""
+        prots = con.execute(
+            f"""
             WITH filtered_prots AS (
                 SELECT name, ogs
                 FROM read_parquet('{eggnog_prots_path}')
@@ -140,7 +141,8 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
                 split_part(og_level, '@', 2) as level
             FROM exploded
             WHERE og_level != '' AND og_level LIKE '%@%'
-        """).pl()
+        """
+        ).pl()
 
         con.close()
 
@@ -170,10 +172,12 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
     try:
         con_og = duckdb.connect(":memory:")
         con_og.execute('SET memory_limit = "4GB"')
-        og = con_og.execute(f"""
+        og = con_og.execute(
+            f"""
             SELECT *, CAST(level AS VARCHAR) as level
             FROM read_parquet('{eggnog_og_path}')
-        """).pl()
+        """
+        ).pl()
         con_og.close()
     except Exception as e:
         warn(f"DuckDB failed for eggnog_og, falling back to Polars: {e}")

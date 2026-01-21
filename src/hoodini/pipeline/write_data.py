@@ -329,7 +329,23 @@ def write_viz_outputs(
             parquet_dir / "protein_metadata.parquet"
         )
 
-    base_tree_cols = ["leaf_id", "og_index", "superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species", "start_win", "end_win", "strand_win", "start_target", "end_target"]
+    base_tree_cols = [
+        "leaf_id",
+        "og_index",
+        "superkingdom",
+        "kingdom",
+        "phylum",
+        "class",
+        "order",
+        "family",
+        "genus",
+        "species",
+        "start_win",
+        "end_win",
+        "strand_win",
+        "start_target",
+        "end_target",
+    ]
     if den_data is not None and den_data.height > 0:
         tree_meta = den_data.clone()
         if "unique_id" in tree_meta.columns:

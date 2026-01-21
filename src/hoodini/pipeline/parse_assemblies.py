@@ -51,7 +51,7 @@ def _enrich_proteins_with_metadata(
 
     This ensures proteins have metadata linking them to their source protein and nucleotide,
     which is needed by downstream tools (padloc, defensefinder, cctyper, etc.) and visualization.
-    
+
     Note: uniprot_id is only added to the actual target protein (where id matches protein_id),
     not to all proteins in the neighborhood.
     """
@@ -67,7 +67,7 @@ def _enrich_proteins_with_metadata(
         all_prots = all_prots.join(
             prot_map.rename({"protein_id": "target_prot"}), on="unique_id", how="left"
         )
-        
+
     # Join uniprot_id only to the actual target protein (where id == protein_id)
     if "uniprot_id" in records.columns and "id" in all_prots.columns:
         uniprot_map = (
@@ -76,9 +76,7 @@ def _enrich_proteins_with_metadata(
             .unique()
         )
         if uniprot_map.height > 0:
-            all_prots = all_prots.join(
-                uniprot_map, left_on="id", right_on="protein_id", how="left"
-            )
+            all_prots = all_prots.join(uniprot_map, left_on="id", right_on="protein_id", how="left")
 
     if all_neigh is not None and all_neigh.height > 0:
         neigh_meta = all_neigh.select(["unique_id", "seqid"]).drop_nulls().unique()

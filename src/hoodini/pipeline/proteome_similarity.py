@@ -339,7 +339,7 @@ def compute_wgrr(
     ann = _annotate_hits(hits, prots, pident_min=pident_min, exclude_self=exclude_self)
     rbh = _rbh_from_ann(ann)
     if rbh.is_empty():
-        return pl.DataFrame(columns=["qseqid", "sseqid", "wGRR_sym", "AAI"])
+        return pl.DataFrame(schema=["qseqid", "sseqid", "wGRR_sym", "AAI"])
 
     w = (
         rbh.group_by(["query_seq", "target_seq"])
@@ -387,7 +387,7 @@ def compute_aai_rbh(
     ann = _annotate_hits(hits, prots, pident_min=pident_min, exclude_self=exclude_self)
     rbh = _rbh_from_ann(ann)
     if rbh.is_empty():
-        return pl.DataFrame(columns=["qseqid", "sseqid", "AAI", "n_RBH", "RBH_frac_min"])
+        return pl.DataFrame(schema=["qseqid", "sseqid", "AAI", "n_RBH", "RBH_frac_min"])
 
     aai = rbh.group_by(["query_seq", "target_seq"]).agg(
         [
@@ -737,9 +737,9 @@ def run_proteome_similarity(
         return vcon_df
     else:
         if wgrr_df is None:
-            wgrr_df = pl.DataFrame(columns=["qseqid", "sseqid", "wGRR_sym", "AAI"])
+            wgrr_df = pl.DataFrame(schema=["qseqid", "sseqid", "wGRR_sym", "AAI"])
         if aai_df is None:
-            aai_df = pl.DataFrame(columns=["qseqid", "sseqid", "AAI", "n_RBH", "RBH_frac_min"])
+            aai_df = pl.DataFrame(schema=["qseqid", "sseqid", "AAI", "n_RBH", "RBH_frac_min"])
         if vcon_df is None:
             vcon_df = pl.DataFrame(
                 columns=[
