@@ -227,12 +227,12 @@ def _run_pipeline_stages(config: RuntimeConfig, tracker) -> None:
         )
 
     if config.sorfs:
-        discarded_sorfs = all_prots[
-            (all_prots["id"].str.contains("sORF") & all_prots["fam_cluster"].is_null())
-        ]
-        discarded_sorfs["gff_id"] = "ID=" + discarded_sorfs["id"]
-        all_prots = all_prots[~all_prots["id"].isin(discarded_sorfs["id"].unique())]
-        all_gff = all_gff[~(all_gff["attributes"].isin(set(discarded_sorfs["gff_id"].unique())))]
+        discarded_sorfs = all_prots.filter(
+            pl.col("id").str.contains("sORF") & pl.col("fam_cluster").is_null()
+        )
+        discarded_sorfs = discarded_sorfs.with_columns(("ID=" + pl.col("id")).alias("gff_id"))
+        all_prots = all_prots.filter(~pl.col("id").is_in(discarded_sorfs["id"].unique()))
+        all_gff = all_gff.filter(~pl.col("attributes").is_in(discarded_sorfs["gff_id"].unique()))
 
     stage_done("Clustering complete")
 
