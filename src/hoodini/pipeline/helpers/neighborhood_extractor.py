@@ -349,24 +349,34 @@ def annotate_sorfs(
     orf_finder = pyrodigal.GeneFinder(meta=True, min_gene=10, max_overlap=9)
     new_genes = []
 
-    for i, pred in enumerate(orf_finder.find_genes(sequence)):
-        overlap_flag = False
-        for row in features_df.iter_rows(named=True):
-            overlap_pct = _calculate_overlap(
-                row["start"], row["end"], pred.begin + start_win, pred.end + start_win
-            )
-            if overlap_pct > 10:
-                overlap_flag = True
-                break
+    def _overlaps_existing(start: int, end: int, threshold: float = 10.0) -> bool:
+        """Check if coordinates overlap with existing features or already-added sORFs.
 
-        if not overlap_flag:
+        Note: sORF-to-sORF overlap uses 0% threshold to prevent overlapping
+        predictions on opposite strands (which are usually spurious).
+        """
+        # Check against original features
+        for row in features_df.iter_rows(named=True):
+            if _calculate_overlap(row["start"], row["end"], start, end) > threshold:
+                return True
+        # Check against already-added new sORFs - use strict 0% threshold
+        # to prevent overlapping sORFs on opposite strands
+        for gene in new_genes:
+            if _calculate_overlap(gene["start"], gene["end"], start, end) > 0:
+                return True
+        return False
+
+    for i, pred in enumerate(orf_finder.find_genes(sequence)):
+        sorf_start = pred.begin + start_win
+        sorf_end = pred.end + start_win
+        if not _overlaps_existing(sorf_start, sorf_end, threshold=10.0):
             new_genes.append(
                 {
                     "seqid": nucleotide_id,
                     "source": "pyrodigal",
                     "type": "CDS",
-                    "start": pred.begin + start_win,
-                    "end": pred.end + start_win,
+                    "start": sorf_start,
+                    "end": sorf_end,
                     "score": pred.score,
                     "strand": "-" if pred.strand == "-1" else "+",
                     "phase": ".",
@@ -380,16 +390,9 @@ def annotate_sorfs(
     for i, (start, stop, strand, _description) in enumerate(
         orfipy_core.orfs(seq_upper, minlen=100, maxlen=1000, partial3=False, between_stops=False)
     ):
-        overlap_flag = False
-        for row in features_df.iter_rows(named=True):
-            overlap_pct = _calculate_overlap(
-                row["start"], row["end"], start + start_win, stop + start_win
-            )
-            if overlap_pct > 0:
-                overlap_flag = True
-                break
-
-        if not overlap_flag:
+        sorf_start = start + start_win
+        sorf_end = stop + start_win
+        if not _overlaps_existing(sorf_start, sorf_end, threshold=0.0):
             orf_sequence = Seq(sequence[start:stop])
             if strand == "-":
                 orf_sequence = orf_sequence.reverse_complement()
@@ -400,8 +403,8 @@ def annotate_sorfs(
                     "seqid": nucleotide_id,
                     "source": "orfipy",
                     "type": "CDS",
-                    "start": start + start_win,
-                    "end": stop + start_win,
+                    "start": sorf_start,
+                    "end": sorf_end,
                     "score": ".",
                     "strand": "-" if strand == "-" else "+",
                     "phase": ".",
@@ -413,7 +416,7 @@ def annotate_sorfs(
 
     if new_genes:
         new_genes_df = pl.DataFrame(new_genes)
-        features_df = pl.concat([features_df, new_genes_df], how="vertical")
+        features_df = pl.concat([features_df, new_genes_df], how="diagonal")
 
     return features_df
 
