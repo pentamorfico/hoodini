@@ -147,7 +147,7 @@ platforms = ["linux-64", "osx-arm64"]
 [tool.pixi.dependencies]
 python = "3.11.*"
 blast = "*"
-diamond = "*"
+diamond = "!=2.1.19"
 skani = "*"
 fastani = "*"
 padloc = ">=2.0"
