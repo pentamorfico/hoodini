@@ -16,9 +16,11 @@
 
 <div align = center>
 
-[ ][KBD]
+[<kbd> <br> Click here for an interactive demo <br> </kbd>][KBD]
 
 </div>
+
+[KBD]: https://storage.hoodini.bio/hoodini-demo.html
 
 ## Introduction
 
@@ -77,7 +79,8 @@ The simplest way to install hoodini is from [Bioconda](https://bioconda.github.i
 **Using pixi:**
 
 ```bash
-pixi add bioconda::hoodini
+pixi init
+pixi add --channel conda-forge --channel bioconda hoodini
 pixi run hoodini download databases
 ```
 
@@ -118,7 +121,7 @@ uv run hoodini download databases
 ```bash
 mamba create -n hoodini
 mamba activate hoodini
-pip install -e
+pip install -e .
 hoodini download databases
 ```
 
