@@ -327,12 +327,13 @@ def _make_tree(records, all_prots, output_dir, threads):
     faa = faa.unique(subset=["unique_id"])
     info(f"Building tree from {faa.height} target protein sequences...")
     to_fasta(faa, "unique_id", "sequence", f"{output_dir}/target_prots.fasta")
-    
+
     info("Running FAMSA alignment...")
     subprocess.run(
         [
             "famsa",
-            "-t", str(threads),
+            "-t",
+            str(threads),
             f"{output_dir}/target_prots.fasta",
             f"{output_dir}/target_prots.aln",
             "-remove-rare-columns",
