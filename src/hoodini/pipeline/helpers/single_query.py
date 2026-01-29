@@ -138,25 +138,33 @@ def _run_remote_blast(
             blast_btn.click(no_wait_after=True)
 
         # 7. EXTRACT RID
-        time.sleep(3)
-
+        # Poll for RID availability (up to 30s)
         rid = None
+        for attempt in range(10):
+            time.sleep(3)
+            
+            # Method 1: Get RID from URL parameter
+            current_url = page.url
+            match = re.search(r"[&?]RID=([A-Z0-9]+)", current_url)
+            if match:
+                rid = match.group(1)
+                break
 
-        # Method 1: Get RID from URL parameter
-        current_url = page.url
-        match = re.search(r"[&?]RID=([A-Z0-9]+)", current_url)
-        if match:
-            rid = match.group(1)
-
-        # Method 2: Fallback - look for "Request ID" in page
-        if not rid:
+            # Method 2: Fallback - look for "Request ID" in page
             content = page.content()
             match = re.search(r"Request ID[^A-Z0-9]*([A-Z0-9]{11,12})", content)
             if match:
                 rid = match.group(1)
-
+                break
+        
         if not rid:
             error("❌ Could not find RID")
+            # Debugging info
+            info(f"debug: Current URL: {page.url}")
+            info(f"debug: Page Title: {page.title()}")
+            # Dump a snippet of content to see what's wrong
+            content_snippet = page.content()[:1000].replace("\n", " ")
+            info(f"debug: Page Content Start: {content_snippet}...")
             return []
 
         # 8. POLL FOR RESULTS
