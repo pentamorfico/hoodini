@@ -1,0 +1,1653 @@
+---
+title: API Reference
+---
+
+# Hoodini API Reference
+
+Python API for gene neighborhood analysis at scale.
+
+**Version:** `'1.0.0'`
+
+
+Hoodini is a comprehensive tool for gene-centric comparative genomics using publicly available data.
+This reference documents the Python API for programmatic access to Hoodini's functionality.
+
+**Quick Links:**
+- [CLI Reference](/docs/hoodini/cli-reference) - Command-line usage
+- [Quick Start](/docs/hoodini/quickstart) - Getting started guide
+- [Outputs](/docs/hoodini/outputs) - Output file formats
+
+---
+
+## CLI Commands
+
+Command-line interface entry points.
+
+### `cli` Command Group
+
+🦉 hoodini: gene-centric comparative genomic analysis using publicly available data
+
+```bash
+hoodini cli `<command>` [options]
+```
+
+**Subcommands:**
+
+- `download` - Download resources used by Hoodini.
+- `run` - Run hoodini with default parameters or from a config file.
+- `utils` - Utility commands for Hoodini (e.g., sequence metadata helpers).
+
+#### `download` Command Group
+
+Download resources used by Hoodini.
+
+```bash
+hoodini download `<command>` [options]
+```
+
+**Subcommands:**
+
+- `assembly_summary` - Download or update the assembly_summary.parquet database.
+- `contig_lengths` - Download missing NCBI contig length records and update precomputed list.
+- `databases` - Download support databases used by some extra tools (emapper, PADLOC models, etc.)
+- `metacerberus` - Download MetaCerberus HMM/TSV databases from OSF.io.
+- `type_dive` - Download and normalize BacDive and PhageDive DSMZ databases.
+
+##### `assembly_summary`
+
+Download or update the assembly_summary.parquet database.
+
+```bash
+hoodini download assembly_summary [options]
+```
+
+##### `contig_lengths`
+
+Download missing NCBI contig length records and update precomputed list.
+
+```bash
+hoodini download contig_lengths [options]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--api-key` | NCBI API key (overrides environment variable NCBI_API_KEY). |
+| `--skip-assembly-summary` | (flag) Skip refreshing local assembly_summary.parquet (use existing local copy). |
+
+##### `databases`
+
+Download support databases used by some extra tools (emapper, PADLOC models, etc.)
+
+```bash
+hoodini download databases [options]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--force` | (flag) Force re-download of files |
+| `--skip-padloc` | (flag) Skip padloc DB update. |
+| `--skip-deffinder` | (flag) Skip defense-finder model install. |
+| `--skip-genomad` | (flag) Skip GenoMAD download. |
+| `--skip-emapper` | (flag) Skip downloading emapper/mmseqs DB. |
+| `--skip-parquet` | (flag) Skip downloading eggNOG parquet support files. |
+| `--skip-contig-lengths` | (flag) Skip downloading contig_lengths.parquet. |
+| `--threads` | Number of threads for aria2c and pigz (0 = use all cores). |
+
+##### `metacerberus`
+
+Download MetaCerberus HMM/TSV databases from OSF.io.
+
+```bash
+hoodini download metacerberus [options]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `dbs` | (positional argument) |
+| `--force` | (flag) Overwrite existing files. |
+
+##### `type_dive`
+
+Download and normalize BacDive and PhageDive DSMZ databases.
+
+```bash
+hoodini download type_dive [options]
+```
+
+#### `run`
+
+Run hoodini with default parameters or from a config file.
+
+```bash
+hoodini run [options]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--config` | TOML config file to load parameters from. |
+| `--input` | Path to a single-column input file or a literal protein ID/FASTA (mutually exclusive with --inputsheet). |
+| `--inputsheet` | Path to a TSV input file (mutually exclusive with --input). |
+| `--output` | Output folder name. |
+| `--max-concurrent-downloads` | Maximum concurrent downloads. |
+| `--api-key` | NCBI API key. |
+| `--num-threads` | Number of threads. |
+| `--assembly-folder` | Path to a local assembly folder. |
+| `--prot-links` | (flag) Run pairwise protein comparisons. |
+| `--nt-links` | (flag) Run pairwise nucleotide comparisons. |
+| `--ani-mode` | Choose ANI calculation method for ANI trees. |
+| `--nt-aln-mode` | Nucleotide alignment mode for pairwise comparisons. |
+| `--blast` | BLAST query file to use. |
+| `--cand-mode` | Mode for selecting IPG representative. |
+| `--clust-method` | Protein clustering method. |
+| `--win-mode` | Window mode:  |
+| `--win` | Window size (genes or nucleotides). |
+| `--min-win` | Min window size on each side. |
+| `--min-win-type` | Type of min window. |
+| `--tree-mode` | Tree building method. |
+| `--tree-file` | Path to the tree file. |
+| `--aai-mode` | Mode for AAI tree construction (wgrr or aai). Note:  |
+| `--aai-subset-mode` | Subset mode for selecting proteins in AAI tree construction. |
+| `--remote-evalue` | E-value for remote BLAST when providing a single protein ID/FASTA as input. |
+| `--remote-max-targets` | Maximum targets to retrieve in remote BLAST for single protein input. |
+| `--padloc` | (flag) Run PADLOC for antiphage defense. |
+| `--deffinder` | (flag) Run DefenseFinder for antiphage defense. |
+| `--ncrna` | (flag) Run Infernal for ncRNA prediction. |
+| `--cctyper` | (flag) Run CCtyper for CRISPR-Cas prediction. |
+| `--genomad` | (flag) Run GenoMAD for MGE identification. |
+| `--sorfs` | (flag) Reannotate small open reading frames. |
+| `--domains` | Comma-separated list of MetaCerberus domain databases. |
+| `--emapper` | (flag) Run eggNOG-mapper (emapper) to annotate proteins and append annotations to protein metadata. |
+| `--min-pident` | Minimum percent identity threshold for BLAST hits in wGRR/AAI calculations. |
+| `--keep` | (flag) Keep temporary files (do not delete). |
+| `--force` | (flag) Overwrite existing output folder if it exists. |
+| `--quiet` | (flag) Silence all non-error output. |
+| `--debug` | (flag) Enable verbose debug logging. |
+
+#### `utils` Command Group
+
+Utility commands for Hoodini (e.g., sequence metadata helpers).
+
+```bash
+hoodini utils `<command>` [options]
+```
+
+**Subcommands:**
+
+- `nuc2asmlen` - Fetch assembly and length metadata for nuccore/contig accessions (with fallback).
+- `prefetch_links` - Generate prefetched links (assembly_id, file_type, link) for a list of assemblies.
+
+##### `nuc2asmlen`
+
+Fetch assembly and length metadata for nuccore/contig accessions (with fallback).
+
+```bash
+hoodini utils nuc2asmlen [options]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `input_file` | (positional argument) |
+| `--output` | Optional output file (TSV). If not set, prints to stdout. |
+
+##### `prefetch_links`
+
+Generate prefetched links (assembly_id, file_type, link) for a list of assemblies.
+
+```bash
+hoodini utils prefetch_links [options]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `input_file` | (positional argument) |
+| `--output` | Optional output file (TSV). If not set, prints to stdout. |
+| `--kinds` | Comma-separated file kinds to generate links for. |
+
+---
+
+## Configuration
+
+Configuration management and runtime settings.
+
+### `config`
+
+#### `load_default_config()`
+
+```python
+def load_default_config() -> dict
+```
+
+### `config.schema`
+
+Deprecated Config schema.
+
+Use `hoodini.config.settings.RuntimeConfig` for all new code. This alias exists
+to avoid breaking imports while the codebase migrates to the new config layer.
+
+### `config.settings`
+
+Runtime configuration helpers.
+
+Centralizes how defaults, user TOML files, and CLI overrides are merged into a
+single typed object. Keep this layer free of CLI concerns so it can be reused
+by tests or other entry points.
+
+#### `RuntimeConfig`
+
+**Methods:**
+
+- `replace()`
+
+  ```python
+  def replace(kwargs: Any = \{\}) -> RuntimeConfig
+  ```
+
+  Return a copy with provided fields updated.
+
+#### `build_runtime_config()`
+
+```python
+def build_runtime_config(defaults: Mapping[str, Any], file_overrides: Mapping[str, Any] | None = None, cli_overrides: Mapping[str, Any] | None = None) -> RuntimeConfig
+```
+
+Merge defaults + file + CLI into a RuntimeConfig.
+
+Later sources override earlier ones. Unknown keys are ignored to keep the
+dataclass strict.
+
+---
+
+## Pipeline Stages
+
+Core pipeline stages for genomic neighborhood analysis.
+
+### `pipeline.cluster_proteins`
+
+#### `cluster_proteins()`
+
+```python
+def cluster_proteins(all_prots: pl.DataFrame | pl.DataFrame, output_dir: str | Path, clust_method: str = 'deepmmseqs', sorfs: bool = False) -> pl.DataFrame
+```
+
+Cluster neighbor proteins and annotate with fam_cluster.
+
+**Expected Files:**
+- all_prots: DataFrame with columns 'id', 'sequence', 'target_prot'
+- &#123;output&#125;/results.fasta (generated by parse_assemblies)
+
+**Generated Files:**
+- &#123;output&#125;/target_prots.fasta: Target proteins extracted for alignment
+- &#123;output&#125;/target_prots.aln: Multiple sequence alignment (if clust_method != 'none')
+- &#123;output&#125;/cluster_results.tsv (method-specific): Clustering output
+
+**Process:**
+1. Extracts target proteins from all_prots
+2. Runs clustering using specified method (deepmmseqs, diamond_deepclust, jackhmmer, or none)
+3. Assigns fam_cluster IDs to proteins based on clustering results
+4. Writes alignment file for phylogenetic analysis
+
+**Parameters:**
+- all_prots: DataFrame with protein data
+- output_dir: path to output folder
+- clust_method: one of ['diamond_deepclust', 'deepmmseqs', 'jackhmmer', 'none']
+- sorfs: whether to filter based on sORF/orfipy rules
+
+**Returns:**
+pl.DataFrame with added 'fam_cluster' column (int or null)
+
+### `pipeline.initialize`
+
+#### `initialize_inputs()`
+
+```python
+def initialize_inputs(input_path: Path | str | None = None, inputsheet: Path | str | None = None, output: Path | str | None = None, force: bool = False, remote_evalue: float = 1e-05, remote_max_targets: int = 100) -> pl.DataFrame
+```
+
+Initialize the working directory and read the user's input records (Polars).
+
+**Expected Files:**
+- input_path: single-column text file with protein IDs (NCBI/UniProt), one per line
+    OR
+- inputsheet: TSV file with columns: og_index, seqid, accession, organism, etc.
+- hoodini/data/assembly_summary.parquet (packaged with hoodini, auto-checked)
+
+**Generated Files:**
+- &#123;output&#125;/ directory (created or overwritten if force=True)
+- No immediate output files; returns DataFrame for downstream stages
+
+**Process:**
+1. Creates or (if existing) optionally overwrites the output folder.
+2. Reads either a single‐column input list or a TSV "inputsheet".
+3. Converts UniProt IDs to NCBI IDs via `uniprot2ncbi(...)` with remote BLAST if needed.
+4. Drops duplicate records based on "og_index".
+5. Returns a Polars DataFrame of final, deduplicated records.
+
+**Returns:**
+pl.DataFrame with schema matching RECORDS (og_index, seqid, accession, organism, etc.)
+
+#### `check_assembly_db()`
+
+```python
+def check_assembly_db() -> None
+```
+
+Check if assembly_summary.parquet exists and optionally download it.
+If the file is older than 1 month, show a warning and instruct the user to run the update command.
+
+### `pipeline.pairwise_nt`
+
+#### `run_pairwise_nt()`
+
+```python
+def run_pairwise_nt(all_neigh: pl.DataFrame | None, all_gff: object | None = None, output_dir: str = 'pairwise_nt_out', nt_aln_mode: object | None = None, ani_mode: str | None = None, nt_links: bool = True, threads: int | None = None, blast_task: str = 'blastn', evalue: float = 1e-05, perc_identity: int = 0, word_size: int | None = None, soft_masking: str = 'false', dust: str = 'no', overlap_on: str = 'query', overlap_tol: int = 0, write_outputs: bool = True, mm2_preset: str = 'asm20', mm2_min_mapq: int = 0, mm2_threads_per_worker: int = 1) -> tuple[pl.DataFrame, pl.DataFrame]
+```
+
+Run pairwise nucleotide comparisons from a single FASTA and return (skani_like_df, alignment_rows_df).
+
+### `pipeline.parse_assemblies`
+
+#### `in_jupyter()`
+
+```python
+def in_jupyter()
+```
+
+#### `run_assembly_parser()`
+
+```python
+def run_assembly_parser(records_df: pl.DataFrame, output_dir: Path | str | None = None, assembly_folder: str = None, ncrna: bool = False, cctyper: bool = False, genomad: bool = False, blast: str = None, apikey: str = '', max_concurrent_downloads: int = 8, num_threads: int = 10, mod: str = 'win_nts', wn: int = 20000, sorfs: bool = False, minwin: int = None, minwin_type: str = 'both') -> dict
+```
+
+Download assemblies and extract genomic neighborhoods around target proteins.
+
+**Expected Files:**
+- records_df: DataFrame from run_ipg with assembly accessions
+- assembly_folder: Optional pre-downloaded assemblies directory structure:
+        &#123;assembly_folder&#125;/&#123;GCA_XXXXXXXXX.X&#125;/*.fna (genomic sequence)
+        &#123;assembly_folder&#125;/&#123;GCA_XXXXXXXXX.X&#125;/*.gff (annotations)
+        &#123;assembly_folder&#125;/&#123;GCA_XXXXXXXXX.X&#125;/*.faa (protein sequences)
+- Remote: NCBI FTP servers for assembly downloads if not in assembly_folder
+
+**Generated Files:**
+- &#123;output&#125;/assembly_list.txt: List of all assembly accessions to download
+- &#123;output&#125;/assembly_folder/&#123;GCA_*&#125;/*.fna: Downloaded genomic FASTA files
+- &#123;output&#125;/assembly_folder/&#123;GCA_*&#125;/*.gff: Downloaded GFF annotation files
+- &#123;output&#125;/assembly_folder/&#123;GCA_*&#125;/*.faa: Downloaded protein FASTA files
+- &#123;output&#125;/all_neigh.tsv: All extracted neighborhoods metadata
+- &#123;output&#125;/neighborhood/neighborhoods.fasta: Extracted neighborhood sequences
+- &#123;output&#125;/temp.gff: Temporary GFF of all extracted regions
+- &#123;output&#125;/results.fasta: All extracted protein sequences
+
+**Process:**
+1. Downloads assemblies (or uses local assembly_folder) for all valid assembly IDs
+2. Populates file paths (gbf_path, gff_path, faa_path, fna_path) for each record
+3. Runs extract_neighborhood() in parallel for each valid record
+4. Concatenates results into all_gff and all_neigh DataFrames
+5. Enforces minimum window size (minwin) and marks short contigs as failed
+6. Writes intermediate files for downstream stages
+
+**Returns:**
+dict with keys:
+    - "records": updated DataFrame with file paths and extraction status
+    - "all_gff": DataFrame of extracted GFF features (id, seqid, start, end, strand, etc.)
+    - "all_prots": DataFrame of extracted protein sequences (id, sequence, product, etc.)
+    - "all_neigh": DataFrame of neighborhood metadata (seqid, start_win, end_win, etc.)
+    - "valid_uids": list of unique_id values for successfully extracted neighborhoods
+
+### `pipeline.parse_ipg`
+
+IPG (Identical Protein Groups) enrichment pipeline using Polars.
+
+#### `safe_collect()`
+
+```python
+def safe_collect(lf: pl.LazyFrame) -> PlDF
+```
+
+Collect a lazy frame, preferring streaming when available.
+
+#### `run_ipg()`
+
+```python
+def run_ipg(records_df: PlDF, cand_mode: str) -> PlDF
+```
+
+Polars-based IPG enrichment pipeline.
+
+### `pipeline.protein_links`
+
+#### `run_protein_links()`
+
+```python
+def run_protein_links(output_dir: str, all_prots: pl.DataFrame, threads: int = 4, evalue: float = 1e-05) -> pl.DataFrame
+```
+
+Build Diamond DB from `all_prots` (DataFrame) and run all-vs-all blastp.
+
+Parameters
+- output_dir: base output folder where results.fasta will be read/written
+- all_prots: polars DataFrame containing at least columns ['id', 'sequence'] or ['protein_id', 'sequence']
+- threads: number of threads for Diamond
+- evalue: evalue cutoff for blastp
+
+Returns
+- polars.DataFrame with columns [qseqid, sseqid, pident, length, evalue, bitscore]
+  with self-hits removed (same genome prefix in qseqid and sseqid).
+
+### `pipeline.proteome_similarity`
+
+#### `compute_wgrr()`
+
+```python
+def compute_wgrr(hits_df: pl.DataFrame | pl.LazyFrame, proteins_df: pl.DataFrame | pl.LazyFrame, pident_min: float | None = 30.0, exclude_self: bool = True, symmetric: bool = True) -> pl.DataFrame
+```
+
+Weighted Gene Repertoire Relatedness (wGRR) between proteomes.
+
+Definition (symmetric by construction):
+  - Build RBHs between proteomes A and B.
+  - Sum identity FRACTIONS (pident/100) across RBH pairs per sequence pair.
+  - Normalize by min(nA, nB).
+  - Clip to [0, 1].
+
+Returns Polars DataFrame with columns: ["qseqid", "sseqid", "wGRR_sym", "AAI"]
+
+#### `compute_aai_rbh()`
+
+```python
+def compute_aai_rbh(hits_df: pl.DataFrame | pl.LazyFrame, proteins_df: pl.DataFrame | pl.LazyFrame, pident_min: float | None = 30.0, exclude_self: bool = True) -> pl.DataFrame
+```
+
+Average Amino-acid Identity using Reciprocal Best Hits (RBH).
+Returns Polars DataFrame.
+
+#### `compute_vcontact2_hypergeom()`
+
+```python
+def compute_vcontact2_hypergeom(proteins_df: pl.DataFrame | pl.LazyFrame, max_df_frac: float = 0.2, min_shared: int = 2, multiple_test: str = 'BH') -> pl.DataFrame
+```
+
+vContact2-like hypergeometric similarity on presence/absence of protein families.
+Vectorized version (no Python loops). Returns Polars DataFrame.
+
+#### `run_proteome_similarity()`
+
+```python
+def run_proteome_similarity(all_prots: pl.DataFrame | pl.DataFrame | pl.LazyFrame, pairwise_aa: pl.DataFrame | pl.DataFrame | pl.LazyFrame, all_neigh: pl.DataFrame | pl.DataFrame | pl.LazyFrame | None = None, all_gff: pl.DataFrame | pl.DataFrame | pl.LazyFrame | None = None, outdir: str | None = None, pident_min: float = 30.0, mode: str = 'all', subset_mode: str | None = None, win: int | None = None, win_mode: str = 'bp', parallel: bool = False, num_threads: int | None = None) -> pl.DataFrame | tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]
+```
+
+Compute wGRR, AAI (RBH), and/or vContact2-like hypergeometric scores.
+
+Parameters
+all_prots : Polars DataFrame
+pairwise_aa : Polars DataFrame (BLAST outfmt 6 or normalized)
+all_neigh : unused (kept for API compatibility)
+outdir : optional path to write TSVs
+pident_min : identity threshold for hits (default 30.0)
+mode : &#123;'wgrr','aai','hyper','all'&#125;
+parallel : if True and mode='all', run metrics concurrently (3 threads)
+num_threads : optional override for parallel thread pool size (defaults to 3 when parallel=True)
+
+Returns
+Polars DataFrame or tuple of Polars DataFrame
+
+### `pipeline.runner`
+
+Pipeline orchestration for the hoodini CLI.
+
+Keeps the CLI thin by encapsulating the main workflow in a single callable
+that accepts a typed RuntimeConfig.
+
+#### `run_pipeline()`
+
+```python
+def run_pipeline(config: RuntimeConfig) -> None
+```
+
+Execute the hoodini workflow using the provided config.
+
+Pipeline Stages and File I/O:
+
+1. INITIALIZATION (initialize_inputs)
+    Expects: config.input_path OR config.inputsheet
+    Generates:
+    - &#123;output&#125;/ (creates output directory)
+    Returns: records DataFrame
+
+2. IPG PARSING (run_ipg)
+    Expects: records DataFrame
+    Generates: (no files, enriches records with IPG data)
+    Returns: enriched records DataFrame
+
+3. ASSEMBLY PARSING (run_assembly_parser)
+    Expects: records DataFrame, assembly_summary.parquet (packaged data)
+    Generates:
+    - &#123;output&#125;/assembly_list.txt
+    - &#123;output&#125;/assembly_folder/&#123;GCA_*&#125;/*.fna, *.gff
+    - &#123;output&#125;/all_neigh.tsv
+    - &#123;output&#125;/neighborhood/neighborhoods.fasta
+    - &#123;output&#125;/temp.gff
+    Returns: all_gff, all_prots, all_neigh DataFrames + valid_uids
+
+4. PROTEIN COMPARISONS (run_protein_links) [if aai_tree or prot_links]
+    Expects: all_prots DataFrame
+    Generates:
+    - &#123;output&#125;/pairwise_aa.tsv
+    Returns: pairwise_aa DataFrame
+
+5. NUCLEOTIDE COMPARISONS (run_pairwise_nt) [if ani_tree or nt_links]
+    Expects: all_neigh, all_gff DataFrames
+    Generates:
+    - &#123;output&#125;/ani_matrix.tsv (if ani_mode)
+    - &#123;output&#125;/nt_links.tsv (if nt_links)
+    Returns: pairwise_ani, nt_links DataFrames
+
+6. PROTEIN CLUSTERING (cluster_proteins)
+    Expects: all_prots DataFrame
+    Generates:
+    - &#123;output&#125;/target_prots.fasta
+    - &#123;output&#125;/target_prots.aln (if clust_method != 'none')
+    Returns: all_prots with fam_cluster column
+
+7. PROTEOME SIMILARITY (run_proteome_similarity) [if aai_tree]
+    Expects: all_prots, pairwise_aa, all_neigh, all_gff
+    Generates:
+    - &#123;output&#125;/aai_matrix.tsv
+    Returns: pairwise_aai DataFrame
+
+8. TAXONOMY & TREE (parse_taxonomy_and_build_tree)
+    Expects: records, all_gff, all_neigh, all_prots DataFrames
+    Generates:
+    - &#123;output&#125;/tree.nwk
+    - &#123;output&#125;/records.csv
+    Returns: tree_str, den_data DataFrame
+
+9. EXTRA ANNOTATIONS (optional tools)
+    - domains (run_domain): &#123;output&#125;/domains.tsv
+    - blast (run_blast): enriches all_gff
+    - padloc (run_padloc): enriches all_prots
+    - emapper (run_emapper): enriches all_prots
+    - deffinder (run_defensefinder): enriches all_prots
+    - cctyper (run_cctyper): &#123;output&#125;/cctyper/, enriches all_prots + all_gff
+    - ncrna (run_ncrna): &#123;output&#125;/ncrna/results.txt, results.sto, enriches all_gff
+    - genomad (run_genomad): &#123;output&#125;/genomad/, enriches all_gff
+
+10. VIZ OUTPUTS (write_viz_outputs)
+    Expects: all_gff, all_neigh, all_prots, den_data, tree_str, optional extras
+    Generates:
+        - &#123;output&#125;/hoodini-viz/parquet/*.parquet (gff, hoods, protein_metadata,
+        tree_metadata, nucleotide_links, protein_links, domains, domains_metadata,
+        ncrna_metadata)
+        - &#123;output&#125;/hoodini-viz/tsv/*.txt (corresponding TSV files)
+        - &#123;output&#125;/hoodini-viz/tree.nwk
+        - &#123;output&#125;/hoodini-viz/hoodini-viz.html (standalone viewer with embedded data)
+
+### `pipeline.taxonomy`
+
+#### `parse_taxonomy_and_build_tree()`
+
+```python
+def parse_taxonomy_and_build_tree(records, all_gff, all_prots, all_neigh, output_dir, tree_mode, tree_file = None, num_threads = 4, pairwise_aai = None, pairwise_ani = None, valid_uids = None, aai_mode: str | None = None, ani_mode: str | None = None, aai_subset_mode: str | None = None, nj_algorithm: str | None = None)
+```
+
+Parse taxonomic information and build phylogenetic tree.
+
+**Expected Files:**
+- records: DataFrame with taxid, organism, unique_id
+- all_prots: DataFrame with protein sequences and fam_cluster
+- all_neigh: DataFrame with neighborhood metadata
+- tree_file: Optional user-provided Newick tree file
+- &#123;output&#125;/target_prots.aln (if tree_mode == 'target_tree')
+- &#123;output&#125;/aai_matrix.tsv (if tree_mode == 'aai_tree')
+- &#123;output&#125;/ani_matrix.tsv (if tree_mode == 'ani_tree')
+
+**Generated Files:**
+- &#123;output&#125;/tree.nwk: Newick format phylogenetic tree
+- &#123;output&#125;/records.csv: Final records with taxonomy and metadata
+
+**Process:**
+1. Enriches records with NCBI taxonomy (superkingdom, phylum, class, order, family, genus, species)
+2. Builds phylogenetic tree based on tree_mode:
+        - 'target_tree': Uses target protein alignment
+        - 'aai_tree': Uses average amino acid identity matrix
+        - 'ani_tree': Uses average nucleotide identity matrix
+        - 'user': Uses provided tree_file
+        - 'taxonomy': Uses NCBI taxonomy hierarchy
+3. Creates dendrogram metadata (den_data) for visualization
+
+**Returns:**
+tuple: (tree_str: str, den_data: pl.DataFrame)
+    - tree_str: Newick format tree string
+    - den_data: DataFrame with leaf_id, taxonomy columns, and neighborhood coordinates
+
+#### `aai_tree()`
+
+```python
+def aai_tree(pairwise_aai: pl.DataFrame, valid_uids: Iterable[str] | None = None, qcol: str = 'qseqid', scol: str = 'sseqid', pcol: str = 'pident', algorithm: str = 'nj', threads: int = 1, mode: str | None = None, subset_mode: str | None = None) -> str
+```
+
+Build a tree from AAI pairwise table (pident) using DecentTree.
+
+Missing pairs (and ids not present in the table but in valid_uids) are
+filled with (max_observed_distance + 2*std_observed).
+
+#### `ani_tree()`
+
+```python
+def ani_tree(pairwise_ani: pl.DataFrame, valid_uids: Iterable[str] | None = None, qcol: str = 'A', scol: str = 'B', pcol: str = 'ANI', algorithm: str = 'nj', threads: int = 1, mode: str | None = None) -> str
+```
+
+Build a tree from ANI pairwise table using DecentTree.
+
+If the ANI table stores percent identity, distances are computed as
+(100 - ANI). Missing pairs are filled with max+2std as for AAI.
+
+#### `calculate_taxid_distances()`
+
+```python
+def calculate_taxid_distances(taxids, update_db = False)
+```
+
+Calculate pairwise taxonomic distances between taxids using taxoniq.
+
+Distance is computed as the number of steps to the lowest common ancestor (LCA)
+from both taxa combined.
+
+### `pipeline.write_data`
+
+#### `write_viz_outputs()`
+
+```python
+def write_viz_outputs(output_dir: str, all_gff: pl.DataFrame, all_neigh: pl.DataFrame, all_prots: pl.DataFrame, den_data: pl.DataFrame, tree_str: str, records: pl.DataFrame | None = None, nt_links: pl.DataFrame | None = None, pairwise_aa: pl.DataFrame | None = None, domains_data: pl.DataFrame | None = None, ncrna_data: pl.DataFrame | None = None, write_domains: bool = False, blast_data: pl.DataFrame | None = None, crispr_df: pl.DataFrame | None = None, genomad_df: pl.DataFrame | None = None) -> Path
+```
+
+Write hoodini visualization-ready files into a hoodini-viz folder.
+
+**Expected Files:**
+- all_gff: DataFrame with genomic features
+- all_neigh: DataFrame with neighborhood metadata
+- all_prots: DataFrame with protein sequences and annotations
+- den_data: DataFrame with taxonomy and tree metadata
+- tree_str: Newick format tree string
+- domains_data: Optional DataFrame with domain annotations
+- ncrna_data: Optional DataFrame with ncRNA metadata
+- nt_links: Optional DataFrame with nucleotide alignment links
+- pairwise_aa: Optional DataFrame with protein similarity links
+
+**Generated Files:**
+Parquet files (for programmatic access):
+    - &#123;output&#125;/hoodini-viz/parquet/gff.parquet
+    - &#123;output&#125;/hoodini-viz/parquet/hoods.parquet
+    - &#123;output&#125;/hoodini-viz/parquet/protein_metadata.parquet
+    - &#123;output&#125;/hoodini-viz/parquet/tree_metadata.parquet
+    - &#123;output&#125;/hoodini-viz/parquet/nucleotide_links.parquet
+    - &#123;output&#125;/hoodini-viz/parquet/protein_links.parquet
+    - &#123;output&#125;/hoodini-viz/parquet/domains.parquet (if domains requested)
+    - &#123;output&#125;/hoodini-viz/parquet/domains_metadata.parquet (if domains requested)
+    - &#123;output&#125;/hoodini-viz/parquet/ncrna_metadata.parquet (if ncrna requested)
+
+TSV files (human-readable):
+    - &#123;output&#125;/hoodini-viz/tsv/gff.gff
+    - &#123;output&#125;/hoodini-viz/tsv/hoods.txt
+    - &#123;output&#125;/hoodini-viz/tsv/protein_metadata.txt
+    - &#123;output&#125;/hoodini-viz/tsv/tree_metadata.txt
+    - &#123;output&#125;/hoodini-viz/tsv/nucleotide_links.txt
+    - &#123;output&#125;/hoodini-viz/tsv/protein_links.txt
+    - &#123;output&#125;/hoodini-viz/tsv/domains.txt (if domains)
+    - &#123;output&#125;/hoodini-viz/tsv/domains_metadata.txt (if domains)
+    - &#123;output&#125;/hoodini-viz/tsv/ncrna_metadata.txt (if ncrna)
+
+Other files:
+    - &#123;output&#125;/hoodini-viz/tree.nwk: Newick phylogenetic tree
+    - &#123;output&#125;/hoodini-viz/hoodini-viz.html: Standalone interactive viewer
+        (embeds all parquet data as base64-encoded strings for portability)
+
+Parameters (Raw Tool Outputs):
+blast_data: Optional raw BLAST DataFrame (auto-transformed to GFF)
+crispr_df: Optional raw CCTyper CRISPR array DataFrame (auto-transformed to GFF)
+genomad_df: Optional raw geNomad MGE DataFrame (auto-transformed to GFF)
+ncrna_data: Optional ncRNA metadata (exported separately + auto-transformed to GFF)
+
+**Returns:**
+Path: The hoodini-viz output directory path
+
+---
+
+## Data Downloads
+
+Functions for downloading databases and reference data.
+
+### `download.assembly_summary`
+
+#### `generate_summary_urls()`
+
+```python
+def generate_summary_urls(dbs: list[str], include_historical: bool = True) -> list[str]
+```
+
+Generate NCBI assembly summary URLs based on database and historical flag.
+
+#### `get_ncbi_header()`
+
+```python
+def get_ncbi_header(file_path: Path) -> list[str]
+```
+
+Extract header from an NCBI assembly summary file (line starting with #assembly_accession).
+
+#### `download_assembly_db()`
+
+```python
+def download_assembly_db(dbs: list[str], output_path: Path, columns_to_keep: list[str] | None = None, include_historical: bool = True) -> None
+```
+
+Download multiple assembly summary files using aria2c and save combined table.
+
+#### `download_assembly_summary_db()`
+
+```python
+def download_assembly_summary_db(output_path: Path | None = None) -> Path
+```
+
+Convenience wrapper to download and merge RefSeq + GenBank assembly summaries.
+
+### `download.contig_lengths`
+
+#### `PartRotatingWriter`
+
+**Methods:**
+
+- `add_many()`
+
+  ```python
+  def add_many(rows: list[dict[str, Any]])
+  ```
+
+- `close()`
+
+  ```python
+  def close()
+  ```
+
+#### `get_missing_contigs_from_summary()`
+
+```python
+def get_missing_contigs_from_summary(assembly_summary_path: Path, allowed_assemblies_df: pl.DataFrame | None = None) -> tuple[pl.DataFrame, float | None]
+```
+
+Return a DataFrame of missing assembly_accession values and latest mtime.
+
+Uses lazy evaluation and anti-join with streaming to minimize memory usage.
+
+#### `fetch_to_queue()`
+
+```python
+def fetch_to_queue(session, asm, url, queue, batch_rows, retries, timeout_s, sem)
+```
+
+#### `writer_consumer()`
+
+```python
+def writer_consumer(queue, n_producers, writer)
+```
+
+#### `stream_and_write()`
+
+```python
+def stream_and_write(pairs, target_mb = 30, batch_rows = 5000, concurrency = 10, retries = 3, timeout = 60)
+```
+
+#### `download_contig_lengths()`
+
+```python
+def download_contig_lengths(api_key: str | None = None, workers: int = 10, skip_assembly_summary: bool = False)
+```
+
+### `download.databases`
+
+#### `extract_tar()`
+
+```python
+def extract_tar(tar_path: Path, dest_dir: Path, threads: int = 0) -> bool
+```
+
+Extract tar.gz using pigz if available (fast), else fall back to tar, else Python tarfile.
+
+#### `main()`
+
+```python
+def main(force: bool = False, skip_padloc: bool = False, skip_deffinder: bool = False, skip_genomad: bool = False, skip_emapper: bool = False, skip_parquet: bool = False, skip_contig_lengths: bool = False, num_threads: int = 0)
+```
+
+### `download.metacerberus`
+
+#### `fetch_all_items()`
+
+```python
+def fetch_all_items(url)
+```
+
+Yield all items from a paginated OSF API endpoint.
+
+#### `list_db_files()`
+
+```python
+def list_db_files()
+```
+
+#### `get_db_groups()`
+
+```python
+def get_db_groups(files)
+```
+
+Return a dict: group -> list of file dicts.
+
+#### `check_downloaded()`
+
+```python
+def check_downloaded(groups)
+```
+
+Return dict: group -> list of (file, present:bool)
+
+#### `download_files()`
+
+```python
+def download_files(files, force = False)
+```
+
+#### `main()`
+
+```python
+def main(selected = None, force = False)
+```
+
+### `download.type_dive`
+
+#### `download_csv()`
+
+```python
+def download_csv(url, out_path, desc)
+```
+
+#### `fill_empty_with_previous()`
+
+```python
+def fill_empty_with_previous(rows)
+```
+
+#### `parse_bacdive_csv()`
+
+```python
+def parse_bacdive_csv(in_path, out_path)
+```
+
+#### `parse_phagedive_csv()`
+
+```python
+def parse_phagedive_csv(in_path, out_path)
+```
+
+#### `print_table()`
+
+```python
+def print_table(header, rows, title)
+```
+
+#### `main()`
+
+```python
+def main()
+```
+
+---
+
+## Extra Tools
+
+Integration with external bioinformatics tools.
+
+### `extra_tools.blast`
+
+#### `run_blast()`
+
+```python
+def run_blast(all_neigh, output, blast, num_threads, valid_unique_ids)
+```
+
+### `extra_tools.cctyper`
+
+#### `run_cctyper()`
+
+```python
+def run_cctyper(all_gff, all_prots, all_neigh, output, num_threads, valid_unique_ids)
+```
+
+### `extra_tools.defensefinder`
+
+#### `run_defensefinder()`
+
+```python
+def run_defensefinder(all_gff, all_prots, output)
+```
+
+### `extra_tools.domain`
+
+#### `deduplicate_domains()`
+
+```python
+def deduplicate_domains(df: pl.DataFrame, gap_threshold = 10, max_overlap = 5, per_database = False) -> pl.DataFrame
+```
+
+Deduplicate domain hits in Polars (no pandas).
+
+#### `run_domain()`
+
+```python
+def run_domain(all_prots, output: str | Path, valid_dbs, num_threads, deduplicate: bool = True, per_database: bool = False, gap_threshold: int = 10, max_overlap: int = 5)
+```
+
+Run domain annotation with HMMER using pre-validated MetaCerberus databases.
+
+### `extra_tools.emapper`
+
+#### `run_emapper()`
+
+```python
+def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 1) -> pl.DataFrame
+```
+
+Run mmseqs easy-search, pick best hit per query directly in Polars,
+join to eggNOG metadata, pick the deepest OG per query,
+and return one row per input protein as a pandas DataFrame.
+
+### `extra_tools.genomad`
+
+#### `run_genomad()`
+
+```python
+def run_genomad(all_neigh, output, num_threads, valid_unique_ids)
+```
+
+### `extra_tools.ncrna`
+
+#### `run_ncrna()`
+
+```python
+def run_ncrna(all_neigh, den_data, output, num_threads, valid_unique_ids)
+```
+
+### `extra_tools.padloc`
+
+#### `run_padloc()`
+
+```python
+def run_padloc(all_gff, all_prots, output: str | Path, num_threads)
+```
+
+---
+
+## Data Models
+
+Table schemas and data validation.
+
+### `models.schemas`
+
+Centralized table schemas and column helpers for Polars dataframes.
+
+These schemas define the expected columns and dtypes for core tables. They should be
+used at module boundaries to validate inputs/outputs and to make pandas→Polars
+migration explicit.
+
+#### `TableSchema`
+
+**Methods:**
+
+- `ensure()`
+
+  ```python
+  def ensure(df: pl.DataFrame, allow_extra: bool = True) -> pl.DataFrame
+  ```
+
+  Validate presence and cast columns to declared dtypes.
+
+#### `ensure_schema()`
+
+```python
+def ensure_schema(df: pl.DataFrame, schema: TableSchema, allow_extra: bool = True) -> pl.DataFrame
+```
+
+#### `select_existing()`
+
+```python
+def select_existing(df: pl.DataFrame, cols: Sequence[str]) -> pl.DataFrame
+```
+
+Return a DataFrame with only existing columns from cols.
+
+#### `ensure_columns()`
+
+```python
+def ensure_columns(df: pl.DataFrame, required: Iterable[str]) -> None
+```
+
+---
+
+## Utilities
+
+Helper functions and utilities.
+
+### `utils.browser_setup`
+
+Browser setup utilities for installing and verifying Playwright dependencies.
+
+This module ensures Playwright Firefox is available before use.
+
+#### `ensure_playwright_firefox()`
+
+```python
+def ensure_playwright_firefox() -> bool
+```
+
+Ensure Playwright Firefox is installed.
+
+Automatically installs Firefox if not already present.
+This should be called once per environment during initial setup.
+
+**Returns:**
+    True if Firefox is available or was successfully installed, False otherwise.
+
+### `utils.classes`
+
+#### `IPGXMLFile`
+
+**Methods:**
+
+- `to_dict()`
+
+  ```python
+  def to_dict(mode: Mode) -> dict[str, Any]
+  ```
+
+  Return the parsed XML content as a nested dictionary.
+
+- `to_dataframe()`
+
+  ```python
+  def to_dataframe(mode: Mode) -> pl.DataFrame
+  ```
+
+  Flatten the parsed XML content into a Polars DataFrame.
+
+### `utils.cli_helpers`
+
+#### `MutuallyExclusiveOption`
+
+A custom click.Option that refuses to let certain other options be provided
+at the same time. Use it like:
+
+    @click.option(
+        "--foo",
+        cls=MutuallyExclusiveOption,
+        mutually_exclusive=["bar", "baz"],
+        help="..."
+    )
+    @click.option(
+        "--bar",
+        cls=MutuallyExclusiveOption,
+        mutually_exclusive=["foo"],
+        help="..."
+    )
+
+**Methods:**
+
+- `handle_parse_result()`
+
+  ```python
+  def handle_parse_result(ctx, opts, args)
+  ```
+
+### `utils.collections`
+
+Small collection helpers.
+
+#### `flat()`
+
+```python
+def flat(seq)
+```
+
+### `utils.colors`
+
+Color utility helpers.
+
+#### `desaturate()`
+
+```python
+def desaturate(hex_color: str, amount: float = 0.2) -> str
+```
+
+#### `darken()`
+
+```python
+def darken(hex_color: str, amount: float = 0.2) -> str
+```
+
+### `utils.combine_parquets`
+
+#### `combine_parquets()`
+
+```python
+def combine_parquets(hive_dir: Path, output_file: Path) -> None
+```
+
+#### `main()`
+
+```python
+def main() -> None
+```
+
+### `utils.downloader`
+
+#### `download_with_aria2c()`
+
+```python
+def download_with_aria2c(urls, dest_dir, connections = 16, split = 16, show_progress = True, show_aria2c_output = False, out_names = None, num_threads: int = 0)
+```
+
+Download URLs to dest_dir using a single aria2c subprocess with Rich progress.
+Returns a list of downloaded file paths.
+
+### `utils.extract_neighborhood`
+
+#### `calculate_overlap()`
+
+```python
+def calculate_overlap(start1, end1, start2, end2)
+```
+
+Calculate overlap percentage between two intervals.
+
+#### `process_features()`
+
+```python
+def process_features(features, record_version)
+```
+
+Extract feature data from GenBank features.
+
+#### `unwrap_attributes()`
+
+```python
+def unwrap_attributes(gff_df)
+```
+
+Unwrap attributes column in GFF DataFrame.
+
+#### `extract_neighborhood()`
+
+```python
+def extract_neighborhood(protein_id, nucleotide_id, gbf_file, gff_file, faa_file, fna_file, mode = 'win_nts', window = None, strand = None, start = None, end = None, unique_id = None, input_type = None, sorfs = None)
+```
+
+### `utils.id_parsing`
+
+ID parsing and categorization utilities.
+
+#### `is_refseq_nuccore()`
+
+```python
+def is_refseq_nuccore(nuc_id) -> bool
+```
+
+Return True if the nuccore accession is a RefSeq accession else False.
+
+#### `switch_assembly_prefix()`
+
+```python
+def switch_assembly_prefix(asm_id)
+```
+
+#### `categorize_id()`
+
+```python
+def categorize_id(id_: str) -> dict[str, str | None]
+```
+
+### `utils.logging_utils`
+
+Centralized logging utilities with Rich styling and log levels.
+
+#### `configure_logging()`
+
+```python
+def configure_logging(quiet: bool = False, debug: bool = False) -> None
+```
+
+Configure console/logging flags.
+
+#### `info()`
+
+```python
+def info(message: str) -> None
+```
+
+#### `success()`
+
+```python
+def success(message: str) -> None
+```
+
+#### `warn()`
+
+```python
+def warn(message: str) -> None
+```
+
+#### `error()`
+
+```python
+def error(message: str) -> None
+```
+
+#### `debug()`
+
+```python
+def debug(message: str) -> None
+```
+
+#### `is_debug_enabled()`
+
+```python
+def is_debug_enabled() -> bool
+```
+
+#### `header()`
+
+```python
+def header(title: str, subtitle: str | None = None, border_style: str = 'light_slate_grey') -> None
+```
+
+Render a boxed header with optional subtitle.
+
+#### `stage_header()`
+
+```python
+def stage_header(title: str, emoji: str = '') -> None
+```
+
+Log a stage banner with timestamp.
+
+#### `stage_done()`
+
+```python
+def stage_done(message: str) -> None
+```
+
+Log a completion message with timestamp.
+
+#### `prompt()`
+
+```python
+def prompt(message: str, default: str | None = None) -> str
+```
+
+Prompt user input aligned with log indentation.
+
+#### `run_with_spinner()`
+
+```python
+def run_with_spinner(title: str, func: Callable[..., Any], args = (), spinner_name: str = 'dots', kwargs = \{\})
+```
+
+Display a Rich spinner with `title` while running `func(*args, **kwargs)`.
+Returns whatever `func` returns.
+
+### `utils.merge_helpers`
+
+Lightweight dataframe merge helpers.
+
+#### `merge_cluster_result()`
+
+```python
+def merge_cluster_result(all_prots: pl.DataFrame, merged: pl.DataFrame) -> pl.DataFrame
+```
+
+### `utils.ncbi_api`
+
+#### `nuc2ass()`
+
+```python
+def nuc2ass(nucleotide_ids, apikey = None, temp_dir = 'temp', chunk_size = 10, max_concurrent = 9)
+```
+
+Fetch nucleotide summaries and link nucleotide IDs to assemblies.
+
+**Parameters:**
+    nucleotide_ids (list): List of nucleotide IDs to query.
+    api_key (str): NCBI API key.
+    temp_dir (str, optional): Directory to store temporary XML files. Defaults to "temp".
+    chunk_size (int, optional): Number of IDs to query per request. Defaults to 100.
+
+**Returns:**
+    pl.DataFrame: DataFrame containing columns `AccessionVersion`, `AssemblyAccession`, `Taxid`, and `superkingdom`.
+
+#### `nuc2len()`
+
+```python
+def nuc2len(nucleotide_ids, apikey, temp_dir = 'temp', chunk_size = 100, max_concurrent = 10)
+```
+
+Fetch nucleotide summaries and link nucleotide IDs to assemblies.
+
+**Parameters:**
+    nucleotide_ids (list): List of nucleotide IDs to query.
+    apikey (str): NCBI API key.
+    temp_dir (str, optional): Directory to store temporary XML files. Defaults to "temp".
+    chunk_size (int, optional): Number of IDs to query per request. Defaults to 100.
+
+**Returns:**
+    pl.DataFrame: DataFrame containing columns `AccessionVersion`, `AssemblyAccession`, `Taxid`, and `superkingdom`.
+
+#### `chunked_iterable()`
+
+```python
+def chunked_iterable(iterable, size)
+```
+
+#### `download_file()`
+
+```python
+def download_file(url, index, folder)
+```
+
+#### `download_files()`
+
+```python
+def download_files(urls, folder, max_concurrent_downloads)
+```
+
+#### `create_ncbi_links()`
+
+```python
+def create_ncbi_links(chunk_list, chunk_size, db, retmode, apikey, engine = None, rettype = None, dbto = None)
+```
+
+#### `process_xml()`
+
+```python
+def process_xml(file_path, mode)
+```
+
+Function to process a single file and return the resulting dataframe.
+
+**Args:**
+file_path (str): Path to the XML file to be processed.
+mode (str): The mode to use when processing the file ("ipg", "nucsum", etc.).
+
+**Returns:**
+DataFrame: Processed dataframe from the file.
+
+#### `parseXML()`
+
+```python
+def parseXML(folder_path, mode)
+```
+
+Parses XML files in a given folder based on the specified mode and returns a concatenated DataFrame.
+
+**Args:**
+folder_path (str): Path to the folder containing XML files.
+mode (str): The mode to use for parsing ("ipg", "nucsum", "asssum", etc.).
+
+**Returns:**
+DataFrame: A concatenated DataFrame with the contents of all processed XML files.
+
+### `utils.playwright_utils`
+
+Playwright utilities for browser automation with proper environment setup.
+
+This module provides async helpers for Playwright Firefox that handle
+LD_LIBRARY_PATH setup for conda/pixi/mamba environments automatically.
+
+#### `get_browser_context()`
+
+```python
+def get_browser_context() -> AsyncGenerator[Page, None]
+```
+
+Context manager for async Playwright browser with proper environment setup.
+
+Automatically:
+- Sets up LD_LIBRARY_PATH for conda/pixi/mamba environments
+- Launches Firefox browser with appropriate arguments
+- Provides a page context for automation
+- Cleans up browser on exit
+
+**Yields:**
+    playwright.async_api.Page: Browser page for automation
+
+**Example:**
+    >>> async with get_browser_context() as page:
+    ...     await page.goto("https://example.com")
+    ...     await page.fill("#search", "query")
+
+#### `open_blast_page()`
+
+```python
+def open_blast_page(url: str) -> tuple[Page, str | None]
+```
+
+Open NCBI BLAST page and return page object for automation.
+
+This is a utility function for testing the Playwright setup.
+
+**Args:**
+    url: The NCBI BLAST URL to open
+
+**Returns:**
+    Tuple of (page object, error message if any)
+
+**Example:**
+    >>> page, error = await open_blast_page("https://blast.ncbi.nlm.nih.gov/...")
+    >>> if not error:
+    ...     # Automate BLAST workflow
+    ...     pass
+
+### `utils.polars_adapters`
+
+Helpers to bridge pandas↔Polars at the edges of the codebase.
+
+Goal: keep Polars as the internal dataframe representation. Use these adapters at
+integration boundaries that still emit pandas (external libs, legacy code) until
+migration is complete.
+
+#### `to_polars()`
+
+```python
+def to_polars(df: pl.DataFrame | pl.LazyFrame | Any, schema: TableSchema | None = None) -> pl.DataFrame
+```
+
+Convert incoming data to a Polars DataFrame and optionally enforce schema.
+
+#### `to_pandas()`
+
+```python
+def to_pandas(df: pl.DataFrame | pl.LazyFrame | Any)
+```
+
+Deprecated: pandas removed from dependencies.
+
+#### `ensure_required()`
+
+```python
+def ensure_required(df: pl.DataFrame, cols: Iterable[str]) -> None
+```
+
+#### `rename_if_present()`
+
+```python
+def rename_if_present(df: pl.DataFrame, mapping: Mapping[str, str]) -> pl.DataFrame
+```
+
+Rename columns that exist; ignore missing keys.
+
+### `utils.runtime_env`
+
+Runtime environment utilities for managing LD_LIBRARY_PATH across conda/pixi/mamba.
+
+This module handles automatic detection and setup of library paths needed by
+Playwright Firefox in conda/mamba/pixi environments without requiring sudo.
+
+#### `find_candidate_lib_dirs()`
+
+```python
+def find_candidate_lib_dirs() -> list[str]
+```
+
+Find candidate library directories from conda/mamba/pixi environments.
+
+Searches for:
+- $CONDA_PREFIX/lib (conda/mamba active environment)
+- ~/.pixi/envs/*/lib (pixi environments)
+- ~/.mamba/envs/*/lib (mamba environments)
+
+**Returns:**
+    List of absolute paths to lib directories, deduplicated and ordered.
+
+#### `verify_gtk_availability()`
+
+```python
+def verify_gtk_availability() -> str | None
+```
+
+Verify that GTK3 libraries are available in the current environment.
+
+**Returns:**
+    Path to the lib directory containing libgtk-3.so.0, or None if not found.
+
+#### `apply_ld_library_path()`
+
+```python
+def apply_ld_library_path() -> None
+```
+
+Apply LD_LIBRARY_PATH modifications for Playwright Firefox in conda/pixi/mamba.
+
+Prepends candidate library directories to LD_LIBRARY_PATH so that Playwright
+Firefox can find GTK3 and other required libraries.
+
+This should be called before launching Playwright browser instances.
+
+### `utils.seq_io`
+
+FASTA helpers and simple file transforms.
+
+#### `to_fasta()`
+
+```python
+def to_fasta(df: pl.DataFrame, id_col: str, seq_col: str, path: str | Path) -> None
+```
+
+Write a Polars DataFrame to FASTA.
+
+#### `read_fasta()`
+
+```python
+def read_fasta(filename: str | Path) -> pl.DataFrame
+```
+
+### `utils.tree_building`
+
+#### `calculate_taxid_distances()`
+
+```python
+def calculate_taxid_distances(taxids, update_db = False)
+```
+
+Calculate pairwise distances between given taxonomic IDs using ete3 by passing node objects.
+
+**Parameters:**
+- taxids (list): A list of taxonomic IDs (integers or strings).
+- update_db (bool): Whether to update the local NCBI taxonomy database. Default is False.
+
+**Returns:**
+- dict: A dictionary with keys as tuples of taxid pairs and values as their distances.
+
+**Raises:**
+- ValueError: If any of the taxids are missing from the taxonomy database.
+
+### `utils.validation`
+
+Input validation and ID parsing utilities.
+
+#### `validate_input_file()`
+
+```python
+def validate_input_file(ctx, param, value)
+```
+
+Validate the input file based on its type, either single-column or TSV format.
+
+#### `validate_domains()`
+
+```python
+def validate_domains(ctx, param, value)
+```
+
+Validate domain database names against MetaCerberus availability.
+
+#### `switch_assembly_prefix()`
+
+```python
+def switch_assembly_prefix(asm_id)
+```
+
+#### `is_refseq_nuccore()`
+
+```python
+def is_refseq_nuccore(nuc_id)
+```
+
+Return True if the nuccore accession is a RefSeq accession else False.
+
+#### `read_input_sheet()`
+
+```python
+def read_input_sheet(filename)
+```
+
+#### `read_input_list()`
+
+```python
+def read_input_list(filename)
+```
+
+#### `uniprot2ncbi()`
+
+```python
+def uniprot2ncbi(df: pl.DataFrame) -> pl.DataFrame
+```
+
+Map UniProt accessions to NCBI protein IDs using UniProtMapper.
+
+- Only attempts mapping for rows with `uniprot_id` present, `protein_id` null/empty,
+  and no local files (`gff_path`/`faa_path` missing).
+- If mapping returns multiple hits, merged `To` values are applied directly.
+- On failure, sets the `failed` column with a descriptive message.
+
+---
+
+## Other Modules

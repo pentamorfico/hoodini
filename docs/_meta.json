@@ -1,0 +1,12 @@
+{
+  "index": "Hoodini CLI",
+  "installation": "Installation",
+  "quickstart": "Quick Start",
+  "tutorial": "Step-by-Step Tutorial",
+  "cli-reference": "CLI Reference",
+  "outputs": "Outputs",
+  "api": {
+    "title": "API",
+    "type": "page"
+  }
+}
