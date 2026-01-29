@@ -220,6 +220,8 @@ def parse_taxonomy_and_build_tree(
 
 def _build_leaf_metadata(records: pl.DataFrame, all_neigh: pl.DataFrame) -> pl.DataFrame:
     """Annotate leaf metadata with taxonomy using Polars only."""
+    from hoodini.utils.logging_utils import info
+
     taxcols = ["superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species"]
 
     records = records.with_columns(
@@ -228,26 +230,45 @@ def _build_leaf_metadata(records: pl.DataFrame, all_neigh: pl.DataFrame) -> pl.D
     )
     all_neigh = all_neigh.with_columns(pl.col("unique_id").cast(pl.Utf8))
 
+    info("Loading NCBI taxonomy database (may take a few minutes on first run)...")
     ncbi = NCBITaxa()
-    tax_rows = []
-    for taxid in records.select("taxid").unique().to_series().to_list():
+
+    # Get unique taxids as integers (filter out non-numeric)
+    unique_taxids = records.select("taxid").unique().to_series().to_list()
+    taxids_int = []
+    taxid_str_to_int = {}
+    for t in unique_taxids:
         try:
-            tid = int(str(taxid))
-            lineage = ncbi.get_lineage(tid)
-            if lineage is None:
-                lineage = ncbi.get_lineage(32644)
-                tid = 32644
-        except Exception:
-            lineage = ncbi.get_lineage(32644)
-            tid = 32644
-        row = {"taxid": str(taxid)}
+            tid = int(str(t))
+            taxids_int.append(tid)
+            taxid_str_to_int[str(t)] = tid
+        except (ValueError, TypeError):
+            pass
+    info(f"Looking up taxonomy for {len(taxids_int)} unique taxids...")
+
+    # Batch lookup all lineages at once (much faster than individual calls)
+    lineage_map = ncbi.get_lineage_translator(taxids_int) if taxids_int else {}
+
+    # Collect all taxids from lineages for batch rank/name lookup
+    all_lineage_taxids = set()
+    for lineage in lineage_map.values():
         if lineage:
-            ranks = ncbi.get_rank(lineage)
-            names = ncbi.get_taxid_translator(lineage)
-            for ltid in lineage:
-                rank_name = ranks.get(ltid, "")
-                if rank_name in taxcols:
-                    row[rank_name] = names.get(ltid, "")
+            all_lineage_taxids.update(lineage)
+
+    # Batch lookup ranks and names for ALL taxids at once
+    all_ranks = ncbi.get_rank(list(all_lineage_taxids)) if all_lineage_taxids else {}
+    all_names = ncbi.get_taxid_translator(list(all_lineage_taxids)) if all_lineage_taxids else {}
+
+    # Build taxonomy rows using cached data
+    tax_rows = []
+    for taxid in unique_taxids:
+        row = {"taxid": str(taxid)}
+        tid = taxid_str_to_int.get(str(taxid))
+        lineage = lineage_map.get(tid, []) if tid else []
+        for ltid in lineage:
+            rank_name = all_ranks.get(ltid, "")
+            if rank_name in taxcols:
+                row[rank_name] = all_names.get(ltid, "")
         for c in taxcols:
             row.setdefault(c, None)
         tax_rows.append(row)
@@ -288,6 +309,7 @@ def _build_leaf_metadata(records: pl.DataFrame, all_neigh: pl.DataFrame) -> pl.D
 
 
 def _make_tree(records, all_prots, output_dir, threads):
+    from hoodini.utils.logging_utils import info
 
     valid = records.filter(pl.col("failed").is_null())
     prots = (
@@ -303,10 +325,15 @@ def _make_tree(records, all_prots, output_dir, threads):
 
     # ensure one sequence per unique_id (neighborhood) and preserve original mapping
     faa = faa.unique(subset=["unique_id"])
+    info(f"Building tree from {faa.height} target protein sequences...")
     to_fasta(faa, "unique_id", "sequence", f"{output_dir}/target_prots.fasta")
+
+    info("Running FAMSA alignment...")
     subprocess.run(
         [
             "famsa",
+            "-t",
+            str(threads),
             f"{output_dir}/target_prots.fasta",
             f"{output_dir}/target_prots.aln",
             "-remove-rare-columns",
@@ -316,6 +343,7 @@ def _make_tree(records, all_prots, output_dir, threads):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    info("Running VeryFastTree...")
     result = subprocess.run(
         ["VeryFastTree", "-threads", str(threads), f"{output_dir}/target_prots.aln"],
         capture_output=True,

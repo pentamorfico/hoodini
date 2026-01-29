@@ -221,7 +221,7 @@ def compute_window(
     features_df: pl.DataFrame,
     *,
     input_type: Literal["protein", "nucleotide"],
-    mode: Literal["win_nts", "win_ngen"],
+    mode: Literal["win_nts", "win_genes"],
     window: int,
     protein_id: str | None = None,
     start: int | None = None,
@@ -254,7 +254,7 @@ def compute_window(
             if sequence_length:
                 end_win = min(end_win, sequence_length)
 
-        elif mode == "win_ngen":
+        elif mode == "win_genes":
             indexed = features_df.with_row_count("_idx")
             prot_idx = indexed.filter(pl.col("protein_id") == protein_id).row(0, named=True)["_idx"]
             slice_start = max(0, prot_idx - window)
@@ -283,7 +283,7 @@ def compute_window(
                 if sequence_length:
                     end_win = min(end_win, sequence_length)
 
-            elif mode == "win_ngen":
+            elif mode == "win_genes":
                 indexed = features_df.with_row_count("_idx")
                 in_range = indexed.filter((pl.col("start") >= start) & (pl.col("end") <= end))
                 if in_range.height == 0:
