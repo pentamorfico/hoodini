@@ -142,7 +142,7 @@ def _run_remote_blast(
         rid = None
         for attempt in range(10):
             time.sleep(3)
-            
+
             # Method 1: Get RID from URL parameter
             current_url = page.url
             match = re.search(r"[&?]RID=([A-Z0-9]+)", current_url)
@@ -156,7 +156,7 @@ def _run_remote_blast(
             if match:
                 rid = match.group(1)
                 break
-        
+
         if not rid:
             error("❌ Could not find RID")
             # Debugging info
