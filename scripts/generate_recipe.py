@@ -48,7 +48,7 @@ def get_micromamba_url() -> str:
     """Get the correct micromamba download URL for this platform."""
     system = platform.system().lower()
     machine = platform.machine().lower()
-    
+
     if system == "darwin":
         if machine in ("arm64", "aarch64"):
             return "https://micro.mamba.pm/api/micromamba/osx-arm64/latest"
@@ -65,17 +65,17 @@ def ensure_micromamba() -> Path:
     """Download micromamba if not present, return path to binary."""
     if MICROMAMBA_BIN.exists():
         return MICROMAMBA_BIN
-    
+
     print("Downloading micromamba...")
     MICROMAMBA_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     url = get_micromamba_url()
     tar_path = MICROMAMBA_DIR / "micromamba.tar.bz2"
-    
+
     # Download
     with urllib.request.urlopen(url, timeout=60) as response:  # noqa: S310
         tar_path.write_bytes(response.read())
-    
+
     # Extract
     with tarfile.open(tar_path, "r:bz2") as tar:
         for member in tar.getmembers():
@@ -83,51 +83,52 @@ def ensure_micromamba() -> Path:
                 member.name = "micromamba"
                 tar.extract(member, MICROMAMBA_DIR, filter="data")
                 break
-    
+
     # Make executable
     MICROMAMBA_BIN.chmod(MICROMAMBA_BIN.stat().st_mode | stat.S_IEXEC)
     tar_path.unlink()
-    
+
     print(f"✓ Installed micromamba to {MICROMAMBA_BIN}")
     return MICROMAMBA_BIN
 
 
 def check_conda_available(
-    package: str, 
-    version_spec: str, 
-    micromamba: Path,
-    platforms: list[str]
+    package: str, version_spec: str, micromamba: Path, platforms: list[str]
 ) -> dict[str, bool]:
     """Check if a package (with version) is available on conda for each platform."""
     pkg_normalized = package.lower().replace("_", "-")
-    
+
     # Build the search spec
-    if version_spec:
-        search_spec = f"{pkg_normalized}{version_spec}"
-    else:
-        search_spec = pkg_normalized
-    
+    search_spec = f"{pkg_normalized}{version_spec}" if version_spec else pkg_normalized
+
     results = {}
     for plat in platforms:
         cache_key = (pkg_normalized, version_spec, plat)
         if cache_key in _conda_cache:
             results[plat] = _conda_cache[cache_key]
             continue
-        
+
         try:
             result = subprocess.run(
                 [
-                    str(micromamba), "search", search_spec,
-                    "-c", "conda-forge", "-c", "bioconda",
-                    "--platform", plat,
-                    "--json", "-q"
+                    str(micromamba),
+                    "search",
+                    search_spec,
+                    "-c",
+                    "conda-forge",
+                    "-c",
+                    "bioconda",
+                    "--platform",
+                    plat,
+                    "--json",
+                    "-q",
                 ],
                 capture_output=True,
                 text=True,
                 timeout=30,
-                env={**os.environ, "MAMBA_NO_BANNER": "1"}
+                env={**os.environ, "MAMBA_NO_BANNER": "1"},
             )
-            
+
             # Parse JSON output
             available = False
             if result.returncode == 0 and result.stdout.strip():
@@ -137,13 +138,13 @@ def check_conda_available(
                     available = len(pkgs) > 0
                 except json.JSONDecodeError:
                     available = False
-            
+
             _conda_cache[cache_key] = available
             results[plat] = available
         except (subprocess.TimeoutExpired, subprocess.SubprocessError):
             _conda_cache[cache_key] = False
             results[plat] = False
-    
+
     return results
 
 
@@ -165,23 +166,27 @@ def run_checks(
     linux_deps: dict[str, str],
     micromamba: Path,
     platforms: list[str],
-    filter_pkgs: list[str] | None = None
+    filter_pkgs: list[str] | None = None,
 ) -> list[tuple[str, str, list[str]]]:
     """Run conda availability checks. Returns list of issues."""
     issues = []
-    
+
     # Filter deps if specific packages requested
     if filter_pkgs:
-        check_deps = {k: v for k, v in all_deps.items() if k.lower() in [p.lower() for p in filter_pkgs]}
-        check_linux = {k: v for k, v in linux_deps.items() if k.lower() in [p.lower() for p in filter_pkgs]}
+        check_deps = {
+            k: v for k, v in all_deps.items() if k.lower() in [p.lower() for p in filter_pkgs]
+        }
+        check_linux = {
+            k: v for k, v in linux_deps.items() if k.lower() in [p.lower() for p in filter_pkgs]
+        }
     else:
         check_deps = all_deps
         check_linux = linux_deps
-    
+
     if not check_deps and not check_linux:
         print("No matching packages to check.")
         return issues
-    
+
     # Check universal deps
     if check_deps:
         print(f"Checking conda availability across {platforms}...\n")
@@ -190,14 +195,14 @@ def run_checks(
             header += f" {plat:<14}"
         print(header)
         print("-" * (45 + 14 * len(platforms)))
-        
+
         for pkg in sorted(check_deps.keys()):
             if pkg == "python":
                 continue
-            
+
             spec = check_deps[pkg]
             availability = check_conda_available(pkg, spec, micromamba, platforms)
-            
+
             statuses = []
             missing = []
             for plat in platforms:
@@ -206,16 +211,16 @@ def run_checks(
                 else:
                     statuses.append("✗")
                     missing.append(plat)
-            
+
             spec_display = spec if spec else "*"
             line = f"{pkg:<25} {spec_display:<20}"
             for s in statuses:
                 line += f" {s:<14}"
             print(line)
-            
+
             if missing:
                 issues.append((pkg, spec, missing))
-    
+
     # Check Linux-specific deps
     if check_linux:
         print("\nLinux-specific dependencies:")
@@ -228,11 +233,13 @@ def run_checks(
                 header += f" {plat:<14}"
             print(header)
             print("-" * (45 + 14 * len(linux_platforms)))
-            
+
             for pkg in sorted(check_linux.keys()):
                 spec = check_linux[pkg]
-                availability = check_conda_available(pkg, spec, micromamba, platforms=linux_platforms)
-                
+                availability = check_conda_available(
+                    pkg, spec, micromamba, platforms=linux_platforms
+                )
+
                 statuses = []
                 missing = []
                 for plat in linux_platforms:
@@ -241,16 +248,16 @@ def run_checks(
                     else:
                         statuses.append("✗")
                         missing.append(plat)
-                
+
                 spec_display = spec if spec else "*"
                 line = f"{pkg:<25} {spec_display:<20}"
                 for s in statuses:
                     line += f" {s:<14}"
                 print(line)
-            
+
             if missing:
                 issues.append((pkg + " [linux]", spec, missing))
-    
+
     return issues
 
 
@@ -312,11 +319,9 @@ def generate_meta_yaml(config: dict) -> tuple[str, list[str], dict[str, str], di
 
     # Get entry points
     scripts = project.get("scripts", {})
-    entry_points_yaml = "\n    - ".join(
-        f"{cmd} = {target}" for cmd, target in scripts.items()
-    )
+    entry_points_yaml = "\n    - ".join(f"{cmd} = {target}" for cmd, target in scripts.items())
 
-    meta = f'''# AUTO-GENERATED from pyproject.toml
+    meta = f"""# AUTO-GENERATED from pyproject.toml
 {{% set name = "{name}" %}}
 {{% set version = "{version}" %}}
 
@@ -341,14 +346,14 @@ requirements:
     - pip
     - setuptools >=68
   run:
-    - {run_deps_yaml}'''
+    - {run_deps_yaml}"""
 
     if linux_deps_yaml:
-        meta += f'''
+        meta += f"""
     # Linux-specific
-    - {linux_deps_yaml}'''
+    - {linux_deps_yaml}"""
 
-    meta += f'''
+    meta += f"""
 
 test:
   imports:
@@ -367,19 +372,17 @@ about:
 extra:
   recipe-maintainers:
     - pentamorfico
-'''
+"""
     return meta, git_deps, all_deps, linux_deps
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Generate bioconda meta.yaml from pyproject.toml"
-    )
+    parser = argparse.ArgumentParser(description="Generate bioconda meta.yaml from pyproject.toml")
     parser.add_argument(
         "--check",
         nargs="*",
         metavar="PKG",
-        help="Check conda availability. No args = check all, or specify packages to check."
+        help="Check conda availability. No args = check all, or specify packages to check.",
     )
     args = parser.parse_args()
 
@@ -395,12 +398,12 @@ def main() -> int:
 
     # Generate meta.yaml
     meta_content, git_deps, all_deps, linux_deps = generate_meta_yaml(config)
-    
+
     # Run checks if requested
     issues = []
     if args.check is not None:
         micromamba = ensure_micromamba()
-        
+
         # Get platforms from config
         pixi = config.get("tool", {}).get("pixi", {})
         platforms = pixi.get("workspace", {}).get("platforms", [])
@@ -420,20 +423,20 @@ def main() -> int:
     # Show git deps warning only when not filtering specific packages
     show_git_warning = args.check is None or (args.check is not None and not args.check)
     if git_deps and show_git_warning:
-        print(f"\n⚠ Git dependencies need conda OR bioconda recipes:")
+        print("\n⚠ Git dependencies need conda OR bioconda recipes:")
         for dep in git_deps:
             print(f"   - {dep}")
 
     if issues:
-        print(f"\n⚠ Packages missing on some platforms:")
+        print("\n⚠ Packages missing on some platforms:")
         for pkg, spec, missing in issues:
             spec_str = f" {spec}" if spec else ""
             print(f"   - {pkg}{spec_str}: missing on {', '.join(missing)}")
 
-    print(f"\nNext steps (if all dependencies are OK):")
+    print("\nNext steps (if all dependencies are OK):")
     print(f"   1. Create a GitHub release/tag: git tag v{version} && git push --tags")
-    print(f"   2. Get sha256: curl -sL <release_url>.tar.gz | shasum -a 256")
-    print(f"   3. Replace REPLACE_WITH_SHA256 in meta.yaml")
+    print("   2. Get sha256: curl -sL <release_url>.tar.gz | shasum -a 256")
+    print("   3. Replace REPLACE_WITH_SHA256 in meta.yaml")
 
     return 0
 
