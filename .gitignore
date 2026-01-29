@@ -23,3 +23,6 @@ example/results/
 **/*.pyc
 .ruff_cache/
 .mypy_cache/
+# pixi environments
+.pixi/*
+!.pixi/config.toml

@@ -6,47 +6,47 @@ build-backend = "setuptools.build_meta"
 name = "hoodini"
 version = "1.0.0"
 description = "magic gene-neighborhood analyses"
-authors = [{name = "Mario R. Mestre", email = "mario.mestre@bio.ku.dk"}]
+authors = [{ name = "Mario R. Mestre", email = "mario.mestre@bio.ku.dk" }]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "polars>=0.20.0",
-    "biopython>=1.80",
-    "rich>=13.0.0",
-    "rich-click>=1.7.0",
-    "requests>=2.31.0",
-    "scipy>=1.11.0",
-    "numpy>=1.24.0",
-    "pandas",
-    "pyarrow",
-    "networkx",
-    "ete3",
-    "orfipy>=0.0.4",
-    "pyrodigal>=3.0.0",
-    "gb-io>=0.2.0",
-    "httpx",
-    "aiohttp",
-    "pyhmmer",
-    "uniprot-id-mapper",
-    "alphafetcher",
-    "jinja2",
-    "mappy",
-    "playwright>=1.40.0",
-    "nest_asyncio>=1.6.0",
-    "cctyper @ git+https://github.com/pentamorfico/CRISPRCasTyper.git",
-    "tomli>=2.0.0",
-    "psutil>=5.9.0",
-    "duckdb>=0.9.0",
+	"polars>=0.20.0",
+	"biopython>=1.80",
+	"rich>=13.0.0",
+	"rich-click>=1.7.0",
+	"requests>=2.31.0",
+	"scipy>=1.11.0",
+	"numpy>=1.24.0",
+	"pandas",
+	"pyarrow",
+	"networkx",
+	"ete3",
+	"orfipy>=0.0.4",
+	"pyrodigal>=3.0.0",
+	"gb-io>=0.2.0",
+	"httpx",
+	"aiohttp",
+	"pyhmmer",
+	"uniprot-id-mapper",
+	"alphafetcher",
+	"jinja2",
+	"mappy",
+	"playwright>=1.40.0",
+	"nest_asyncio>=1.6.0",
+	"cctyper @ git+https://github.com/pentamorfico/CRISPRCasTyper.git",
+	"tomli>=2.0.0",
+	"psutil>=5.9.0",
+	"duckdb>=0.9.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.4.0",
-    "pytest-cov>=4.1.0",
-    "black==24.10.0",
-    "ruff>=0.1.0",
-    "isort>=5.12.0",
-    "mypy>=1.5.0",
+	"pytest>=7.4.0",
+	"pytest-cov>=4.1.0",
+	"black==24.10.0",
+	"ruff>=0.1.0",
+	"isort>=5.12.0",
+	"mypy>=1.5.0",
 ]
 
 [project.scripts]
@@ -83,23 +83,12 @@ target-version = "py310"
 extend-exclude = ["src/hoodini/data", "hoodini.egg-info"]
 
 [tool.ruff.lint]
-select = [
-	"E",   
-	"F",   
-	"I",   
-	"UP",  
-	"B",   
-	"C4",  
-	"SIM", 
-	"N",   
-	"S",   
-	"PL",  
-]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "N", "S", "PL"]
 ignore = [
 	"B905",
-	"E501",   # Line too long (handled by black)
-	"E741",   # Ambiguous variable name
-	"S608",   # SQL injection (false positive for DuckDB internal queries)
+	"E501",    # Line too long (handled by black)
+	"E741",    # Ambiguous variable name
+	"S608",    # SQL injection (false positive for DuckDB internal queries)
 	"PLR0911", # Too many return statements
 	"PLR0912", # Too many branches
 	"PLR0913", # Too many arguments
@@ -149,6 +138,61 @@ minversion = "7.0"
 addopts = "-ra -q"
 testpaths = ["tests"]
 pythonpath = ["src"]
-filterwarnings = [
-	"ignore::DeprecationWarning",
-]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge", "bioconda"]
+platforms = ["linux-64", "osx-arm64"]
+
+[tool.pixi.dependencies]
+python = "3.11.*"
+blast = "*"
+diamond = "!=2.1.19"
+skani = "*"
+fastani = "*"
+padloc = ">=2.0"
+defense-finder = ">=2.0.1"
+genomad = "*"
+mafft = "*"
+foldseek = "*"
+infernal = "*"
+famsa = "*"
+veryfasttree = "*"
+mmseqs2 = "*"
+entrez-direct = "*"
+aria2 = "*"
+pigz = "*"
+ete3 = ">=3.1.3"
+aria2p = "*"
+alphafetcher = "*"
+uniprot-id-mapper = "*"
+diamondonpy = "*"
+playwright-python = ">=1.47,<1.48"
+openssl = "*"
+certifi = "*"
+ca-certificates = "*"
+
+[tool.pixi.target.linux-64.dependencies]
+firefox = "*"
+gtk3 = "*"
+atk = "*"
+xorg-libxcomposite = "*"
+xorg-libxdamage = "*"
+xorg-libxfixes = "*"
+xorg-libxrandr = "*"
+xorg-libxrender = "*"
+xorg-libxext = "*"
+cairo = "*"
+pango = "*"
+gdk-pixbuf = "*"
+fontconfig = "*"
+alsa-lib = "*"
+
+[tool.pixi.pypi-dependencies]
+hoodini = { path = ".", editable = true }
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+dev = { features = ["dev"], solve-group = "default" }
+
+[tool.pixi.tasks]

@@ -14,22 +14,19 @@
     <img src="docs/hoodini-viz-export - 2026-01-14T051133.869.svg" alt="Hoodini Visualization Example" width="800"/>
 </p>
 
-
 <div align = center>
 
 [<kbd> <br> Click here for an interactive demo <br> </kbd>][KBD]
 
 </div>
 
-
 [KBD]: https://storage.hoodini.bio/hoodini-demo.html
-
 
 ## Introduction
 
 Hoodini’s primary goal is to make large-scale genomic context analysis fast, practical, and accessible. It’s built to fetch and process thousands of gene neighborhoods in minutes, turning what used to be hours or days of manual work into an interactive workflow.
 
-With GPU-accelerated, real-time interactive  visualization, Hoodini lets biologists across disciplines explore bacterial operons, defense systems, and mobile genetic elements at scale, revealing patterns, co-localization signals, and evolutionary signatures that drive discovery and deepen our understanding of prokaryotic genomes.
+With GPU-accelerated, real-time interactive visualization, Hoodini lets biologists across disciplines explore bacterial operons, defense systems, and mobile genetic elements at scale, revealing patterns, co-localization signals, and evolutionary signatures that drive discovery and deepen our understanding of prokaryotic genomes.
 
 Beyond exploration, Hoodini offers extensive customization options (including flexible styling, multiple palettes, and fine-grained layout controls) to generate publication-ready, high-quality figures exported for presentations, manuscripts, and supplementary materials.
 
@@ -39,7 +36,7 @@ This README documents installation, the command-line interface and all available
 
 - **Automated data retrieval**: Fetches assemblies and annotations directly from NCBI using protein or nucleotide accessions
 - **Neighborhood extraction**: Extracts configurable genomic windows around target genes
-- **Protein clustering**: Groups homologous proteins across neighborhoods for synteny comparison  
+- **Protein clustering**: Groups homologous proteins across neighborhoods for synteny comparison
 - **Pairwise comparisons**: Computes protein (AAI) and nucleotide (ANI) similarities
 - **Tree construction**: Builds phylogenetic trees from AAI or ANI distances
 - **Defense system annotation**: Integrates PADLOC, DefenseFinder, CCTyper for antiphage systems
@@ -71,24 +68,66 @@ hoodini run --input proteins.txt --output results \
 
 ## Installation
 
-### Mamba
+Hoodini requires both Python packages and several bioinformatics tools. The recommended installation methods handle all dependencies automatically.
+
+### Bioconda (Recommended)
+
+> ⚠️ **Note:** The Bioconda recipe is currently a work in progress. Until it's available, use the development installation methods below.
+
+The simplest way to install hoodini is from [Bioconda](https://bioconda.github.io/) using [pixi](https://pixi.sh) or [mamba](https://mamba.readthedocs.io/)/[conda](https://docs.conda.io/).
+
+**Using pixi:**
 
 ```bash
-mamba env create -f environment.yml
+pixi init
+pixi add --channel conda-forge --channel bioconda hoodini
+pixi run hoodini download databases
+```
+
+**Using mamba/conda:**
+
+```bash
+mamba create -n hoodini -c conda-forge -c bioconda hoodini
+mamba activate hoodini
+hoodini download databases
+```
+
+### Development Installation with Pixi
+
+If you're installing from source, pixi can install all dependencies directly from the repository:
+
+```bash
+git clone https://github.com/pentamorfico/hoodini.git
+cd hoodini
+pixi install
+pixi run hoodini download databases
+```
+
+This installs hoodini as an editable package along with all required tools.
+
+### Python-only Installation (uv/pip)
+
+> ⚠️ **Note:** This only installs Python packages. You must have the other tools available in your PATH for full functionality.
+
+**Using uv:**
+
+```bash
+uv sync
+uv run hoodini download databases
+```
+
+**Using mamba/conda:**
+
+```bash
+mamba create -n hoodini
 mamba activate hoodini
 pip install -e .
 hoodini download databases
 ```
 
-### Pixi
-
-```bash
-pixi install
-pixi shell
-hoodini download databases
-```
-
 ### Docker
+
+> ⚠️ **Note:** The docker image is currently a work in progress. Until it's available, use the development installation methods above.
 
 ```bash
 docker volume create hoodini-data
@@ -111,64 +150,64 @@ hoodini download Download required databases
 
 ### Input Options
 
-| Option | Description |
-|--------|-------------|
-| `--input ID\|FILE` | Single accession (e.g., `WP_012345678.1`) or file with one accession per line |
-| `--inputsheet FILE` | TSV with accessions and custom metadata columns |
+| Option              | Description                                                                  |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `--input ID\|FILE`  | Single accession (e.g.,`WP_012345678.1`) or file with one accession per line |
+| `--inputsheet FILE` | TSV with accessions and custom metadata columns                              |
 
 ### Output Options
 
-| Option | Description |
-|--------|-------------|
-| `--output DIR` | Output directory |
-| `--force` | Overwrite existing output |
-| `--keep` | Retain intermediate files |
+| Option         | Description               |
+| -------------- | ------------------------- |
+| `--output DIR` | Output directory          |
+| `--force`      | Overwrite existing output |
+| `--keep`       | Retain intermediate files |
 
 ### Neighborhood Extraction
 
-| Option | Description |
-|--------|-------------|
-| `--win-mode` | `win_genes` (gene count) or `win_nts` (nucleotide distance) |
-| `--win INT` | Window size (default: 10 genes or 10000 nt) |
-| `--min-win INT` | Minimum genes required per side |
-| `--sorfs` | Re-annotate small ORFs in extracted regions |
+| Option          | Description                                                 |
+| --------------- | ----------------------------------------------------------- |
+| `--win-mode`    | `win_genes` (gene count) or `win_nts` (nucleotide distance) |
+| `--win INT`     | Window size (default: 10 genes or 10000 nt)                 |
+| `--min-win INT` | Minimum genes required per side                             |
+| `--sorfs`       | Re-annotate small ORFs in extracted regions                 |
 
 ### Pairwise Comparisons
 
-| Option | Description |
-|--------|-------------|
-| `--prot-links` | Compute all-vs-all protein similarities |
-| `--nt-links` | Compute pairwise nucleotide alignments |
-| `--nt-aln-mode` | Alignment method: `blastn`, `fastani`, `minimap2` |
-| `--clust-method` | Protein clustering algorithm |
+| Option           | Description                                      |
+| ---------------- | ------------------------------------------------ |
+| `--prot-links`   | Compute all-vs-all protein similarities          |
+| `--nt-links`     | Compute pairwise nucleotide alignments           |
+| `--nt-aln-mode`  | Alignment method:`blastn`, `fastani`, `minimap2` |
+| `--clust-method` | Protein clustering algorithm                     |
 
 ### Tree Construction
 
-| Option | Description |
-|--------|-------------|
-| `--tree-mode` | `aai_tree` (amino acid identity) or `ani_tree` (nucleotide identity) |
-| `--tree-file FILE` | Use precomputed Newick tree |
-| `--aai-mode` | Tree algorithm: `nj` (neighbor-joining) or `hyper` |
-| `--aai-subset-mode` | Proteins for tree: `target_region`, `target_prot`, `window` |
+| Option              | Description                                                          |
+| ------------------- | -------------------------------------------------------------------- |
+| `--tree-mode`       | `aai_tree` (amino acid identity) or `ani_tree` (nucleotide identity) |
+| `--tree-file FILE`  | Use precomputed Newick tree                                          |
+| `--aai-mode`        | Tree algorithm:`nj` (neighbor-joining) or `hyper`                    |
+| `--aai-subset-mode` | Proteins for tree:`target_region`, `target_prot`, `window`           |
 
 ### Functional Annotations
 
-| Option | Description |
-|--------|-------------|
-| `--padloc` | Detect defense systems with PADLOC |
-| `--deffinder` | Detect defense systems with DefenseFinder |
-| `--cctyper` | Type CRISPR-Cas systems |
-| `--genomad` | Identify mobile genetic elements |
-| `--ncrna FILE` | Predict ncRNAs with Infernal using custom CM models file (e.g., Rfam.cm) |
-| `--domains LIST` | Search domain databases (comma-separated) |
+| Option           | Description                                                              |
+| ---------------- | ------------------------------------------------------------------------ |
+| `--padloc`       | Detect defense systems with PADLOC                                       |
+| `--deffinder`    | Detect defense systems with DefenseFinder                                |
+| `--cctyper`      | Type CRISPR-Cas systems                                                  |
+| `--genomad`      | Identify mobile genetic elements                                         |
+| `--ncrna FILE`   | Predict ncRNAs with Infernal using custom CM models file (e.g., Rfam.cm) |
+| `--domains LIST` | Search domain databases (comma-separated)                                |
 
 ### Performance
 
-| Option | Description |
-|--------|-------------|
-| `--num-threads INT` | Parallel threads (default: 4) |
-| `--max-concurrent-downloads INT` | Concurrent NCBI downloads |
-| `--api-key KEY` | NCBI API key (increases rate limits) |
+| Option                           | Description                          |
+| -------------------------------- | ------------------------------------ |
+| `--num-threads INT`              | Parallel threads (default: 4)        |
+| `--max-concurrent-downloads INT` | Concurrent NCBI downloads            |
+| `--api-key KEY`                  | NCBI API key (increases rate limits) |
 
 ## Output Structure
 
@@ -216,7 +255,7 @@ hoodini download metacerberus     # Domain HMM profiles
 
 ## Configuration
 
-Parameters can be set via CLI flags, TOML config file, or built-in defaults.  
+Parameters can be set via CLI flags, TOML config file, or built-in defaults.
 Priority: CLI flags > config file > defaults.
 
 ```toml
@@ -246,7 +285,7 @@ Hoodini is heavily inspired by the work of several excellent tools in the field.
 - [GCsnap](https://github.com/JoanaMPereira/GCsnap) — Gene context visualization with interactive output
 - [FlaGs](https://github.com/GCA-VH-lab/FlaGs) — Flanking genes analysis
 - [Taxonium](https://github.com/theosanderson/taxonium) — Large trees interactive visualization
-- [clinker & clustermap.js](https://github.com/gamcil/clinker) — Gene cluster comparison
+- [clinker &amp; clustermap.js](https://github.com/gamcil/clinker) — Gene cluster comparison
 - [gggenes](https://github.com/wilkox/gggenes) — Gene arrow maps in R
 - [gggenomes](https://github.com/thackl/gggenomes) — Comparative genomics visualization
 - [geneviewer](https://github.com/nvelden/geneviewer) — Interactive gene visualization
@@ -254,3 +293,5 @@ Hoodini is heavily inspired by the work of several excellent tools in the field.
 ## License
 
 See LICENSE file.
+
+[KBD]: https://storage.hoodini.bio/hoodini-demo.html
