@@ -10,8 +10,8 @@ import { Tabs, Steps, Callout } from 'nextra/components'
 Hoodini can be installed using several methods. Choose the one that best fits your workflow.
 
 <Callout type="info" emoji="⏱️">
-  **Note:** Hoodini requires downloading several databases on first run (~40GB total). 
-  Initial setup may take 30-60 minutes depending on your internet connection.
+  **Note:** Hoodini requires downloading several databases on first run (~35GB uncompressed). 
+  Initial setup takes 5+ minutes depending on your internet connection and machine specs.
 </Callout>
 
 ## Installation Methods
@@ -19,6 +19,10 @@ Hoodini can be installed using several methods. Choose the one that best fits yo
 <Tabs items={['Mamba (Recommended)', 'Pixi', 'pip', 'Docker']}>
   <Tabs.Tab>
     **Mamba** is the recommended method for most users. It handles all dependencies automatically.
+
+    <Callout type="info">
+      Hoodini is not yet on Bioconda. For now, clone the repository and install from source.
+    </Callout>
 
     <Steps>
       ### Install Mamba
@@ -30,16 +34,24 @@ Hoodini can be installed using several methods. Choose the one that best fits yo
       bash Miniforge3-$(uname)-$(uname -m).sh
       ```
 
-      ### Create Hoodini environment
+      ### Clone the repository
       
       ```bash
-      mamba create -n hoodini -c conda-forge -c bioconda hoodini
+      git clone https://github.com/pentamorfico/hoodini.git
+      cd hoodini
       ```
 
-      ### Activate and run
+      ### Create environment and install
       
       ```bash
+      mamba env create -f environment.yml
       mamba activate hoodini
+      pip install -e .
+      ```
+
+      ### Verify installation
+      
+      ```bash
       hoodini --help
       ```
     </Steps>
@@ -48,6 +60,10 @@ Hoodini can be installed using several methods. Choose the one that best fits yo
   <Tabs.Tab>
     **Pixi** is a fast, modern package manager that's great for reproducible environments.
 
+    <Callout type="info">
+      Hoodini is not yet on conda-forge. For now, clone the repository and use the environment file.
+    </Callout>
+
     <Steps>
       ### Install Pixi
       
@@ -55,10 +71,12 @@ Hoodini can be installed using several methods. Choose the one that best fits yo
       curl -fsSL https://pixi.sh/install.sh | bash
       ```
 
-      ### Add Hoodini to your project
+      ### Clone and install
       
       ```bash
-      pixi add hoodini
+      git clone https://github.com/pentamorfico/hoodini.git
+      cd hoodini
+      pixi install
       ```
 
       ### Run Hoodini
@@ -73,19 +91,27 @@ Hoodini can be installed using several methods. Choose the one that best fits yo
     **pip** installation works but requires external tools to be installed separately.
 
     <Callout type="warning">
-      The pip installation requires you to manually install external dependencies: 
-      `mmseqs2`, `diamond`, `mafft`, `fasttree`, `iqtree2`, and `muscle`.
+      The pip installation requires you to manually install external dependencies like
+      `mmseqs2`, `diamond`, `mafft`, `veryfasttree`, `padloc`, `defense-finder`, etc.
+      **We strongly recommend using Mamba instead.**
     </Callout>
 
     <Steps>
+      ### Clone the repository
+      
+      ```bash
+      git clone https://github.com/pentamorfico/hoodini.git
+      cd hoodini
+      ```
+
       ### Install external tools first
       
-      Make sure `mmseqs2`, `diamond`, `mafft`, `fasttree`, `iqtree2`, and `muscle` are available in your PATH.
+      Make sure all bioinformatics tools from `environment.yml` are available in your PATH.
 
       ### Install Hoodini
       
       ```bash
-      pip install hoodini
+      pip install -e .
       ```
 
       ### Verify installation
@@ -129,16 +155,23 @@ Hoodini can be installed using several methods. Choose the one that best fits yo
 On first run, Hoodini will download the required databases. Here are the approximate sizes:
 
 <Callout type="warning" emoji="💾">
-  **Storage requirements:** Make sure you have at least **50GB** of free disk space.
+  **Storage requirements:** Make sure you have at least **40GB** of free disk space for all databases.
 </Callout>
 
 | Database | Size | Description |
 |----------|------|-------------|
-| MMseqs2 taxonomy | ~15GB | GTDB taxonomic classification |
-| Diamond (Pfam) | ~8GB | Protein domain annotation |
-| Defense Finder models | ~2GB | Defense system detection |
-| CRISPRCasTyper models | ~1GB | CRISPR-Cas typing |
-| Other models | ~1GB | Additional annotation databases |
+| eggNOG-mapper | ~24 GB | Functional annotation (largest) |
+| MetaCerberus HMMs | ~4.5 GB | Domain annotation (Pfam, COG, KEGG, etc.) |
+| Contig lengths | ~3.8 GB | NCBI assembly metadata |
+| geNomad | ~1.4 GB | Virus/plasmid detection |
+| PADLOC | ~1 GB | Defense system detection |
+| DefenseFinder | ~350 MB | Defense system detection |
+
+You can skip specific databases during download:
+
+```bash
+hoodini download databases --skip-emapper --skip-genomad
+```
 
 ## Verify Installation
 

@@ -144,16 +144,20 @@ def parse_pfam_dat_to_tsv(dat_gz_path: Path, tsv_path: Path):
 
 
 def download_pfam_direct(force=False):
-    """Download Pfam HMM and dat files directly from EBI FTP and create TSV."""
+    """
+    Download Pfam HMM and dat files directly from EBI FTP and create TSV.
+    Returns list of (filename, error) tuples for any failures.
+    """
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     hmm_dest = DATA_DIR / "Pfam.hmm.gz"
     tsv_dest = DATA_DIR / "Pfam.tsv"
+    failed = []
 
     # Check if already downloaded
     if not force and hmm_dest.exists() and tsv_dest.exists():
         info("Pfam files already present!")
-        return
+        return failed
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
@@ -161,33 +165,62 @@ def download_pfam_direct(force=False):
         # Download HMM file
         if force or not hmm_dest.exists():
             logger.info(f"Downloading Pfam HMM from {PFAM_HMM_URL}")
-            download_with_aria2c([PFAM_HMM_URL], tmpdir, show_progress=True)
-            downloaded_hmm = tmpdir / "Pfam-A.hmm.gz"
-            if downloaded_hmm.exists():
-                shutil.move(str(downloaded_hmm), str(hmm_dest))
-                logger.info(f"Saved HMM to {hmm_dest}")
+            try:
+                download_with_aria2c([PFAM_HMM_URL], tmpdir, show_progress=True)
+                downloaded_hmm = tmpdir / "Pfam-A.hmm.gz"
+                if downloaded_hmm.exists():
+                    shutil.move(str(downloaded_hmm), str(hmm_dest))
+                    logger.info(f"Saved HMM to {hmm_dest}")
+                    info("[green]✔[/green] Pfam.hmm.gz downloaded successfully")
+                else:
+                    failed.append(("Pfam.hmm.gz", "Downloaded file not found"))
+                    warn("[red]✗[/red] Pfam.hmm.gz: Downloaded file not found")
+            except SystemExit as e:
+                failed.append(("Pfam.hmm.gz", str(e)))
+                warn(f"[red]✗[/red] Pfam.hmm.gz failed: {e}")
+            except Exception as e:
+                failed.append(("Pfam.hmm.gz", str(e)))
+                warn(f"[red]✗[/red] Pfam.hmm.gz failed: {e}")
 
         # Download dat file and convert to TSV
         if force or not tsv_dest.exists():
             logger.info(f"Downloading Pfam dat from {PFAM_DAT_URL}")
-            download_with_aria2c([PFAM_DAT_URL], tmpdir, show_progress=True)
-            downloaded_dat = tmpdir / "Pfam-A.hmm.dat.gz"
-            if downloaded_dat.exists():
-                parse_pfam_dat_to_tsv(downloaded_dat, tsv_dest)
+            try:
+                download_with_aria2c([PFAM_DAT_URL], tmpdir, show_progress=True)
+                downloaded_dat = tmpdir / "Pfam-A.hmm.dat.gz"
+                if downloaded_dat.exists():
+                    parse_pfam_dat_to_tsv(downloaded_dat, tsv_dest)
+                    info("[green]✔[/green] Pfam.tsv generated successfully")
+                else:
+                    failed.append(("Pfam.tsv", "Downloaded dat file not found"))
+                    warn("[red]✗[/red] Pfam.tsv: Downloaded dat file not found")
+            except SystemExit as e:
+                failed.append(("Pfam.tsv", str(e)))
+                warn(f"[red]✗[/red] Pfam.tsv failed: {e}")
+            except Exception as e:
+                failed.append(("Pfam.tsv", str(e)))
+                warn(f"[red]✗[/red] Pfam.tsv failed: {e}")
 
-    info("Pfam download complete!")
+    if not failed:
+        info("Pfam download complete!")
+    return failed
 
 
-def download_files(files, force=False):
+def download_single_file(file_info):
+    """Download a single file. Returns (name, success, error_msg)."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    urls = [f["download"] for f in files]
-    dests = [DATA_DIR / f["name"] for f in files]
-    out_names = [f["name"] for f in files]
-    logger.info(f"Downloading {len(urls)} metacerberus files to {DATA_DIR}")
-    result_files = download_with_aria2c(urls, DATA_DIR, show_progress=True, out_names=out_names)
+    url = file_info["download"]
+    out_name = file_info["name"]
+    dest = DATA_DIR / out_name
 
-    for rf, dest in zip(result_files, dests):
-        rpath = Path(rf)
+    try:
+        result_files = download_with_aria2c(
+            [url], DATA_DIR, show_progress=True, out_names=[out_name]
+        )
+        if not result_files:
+            return (out_name, False, "No file returned from download")
+
+        rpath = Path(result_files[0])
         if rpath.is_file():
             if rpath != dest:
                 shutil.move(str(rpath), str(dest))
@@ -200,12 +233,46 @@ def download_files(files, force=False):
                 if files_inside:
                     shutil.move(str(files_inside[0]), str(dest))
                 else:
-                    raise RuntimeError(
-                        f"No downloaded file found inside directory returned by downloader: {rpath}"
+                    return (
+                        out_name,
+                        False,
+                        f"No downloaded file found inside directory: {rpath}",
                     )
         else:
-            raise RuntimeError(f"Downloaded path not found: {rpath}")
-    logger.info("Metacerberus downloads complete")
+            return (out_name, False, f"Downloaded path not found: {rpath}")
+
+        return (out_name, True, None)
+    except SystemExit as e:
+        return (out_name, False, str(e))
+    except Exception as e:
+        return (out_name, False, str(e))
+
+
+def download_files(files, force=False):
+    """Download files one by one with individual error tracking."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Downloading {len(files)} metacerberus files to {DATA_DIR}")
+
+    success_count = 0
+    failed = []
+
+    for f in files:
+        name, ok, err = download_single_file(f)
+        if ok:
+            info(f"[green]✔[/green] {name} downloaded successfully")
+            success_count += 1
+        else:
+            warn(f"[red]✗[/red] {name} failed: {err}")
+            failed.append((name, err))
+
+    if failed:
+        warn(f"\n{len(failed)} file(s) failed to download:")
+        for name, err in failed:
+            warn(f"  - {name}: {err}")
+    else:
+        logger.info("Metacerberus downloads complete")
+
+    return failed
 
 
 def main(selected=None, force=False):
@@ -249,10 +316,12 @@ def main(selected=None, force=False):
         return
 
     wanted = [s.strip().lower() for s in selected.split(",") if s.strip()]
+    all_failed = []
 
     # Handle pfam separately
     if "pfam" in wanted:
-        download_pfam_direct(force=force)
+        pfam_failed = download_pfam_direct(force=force)
+        all_failed.extend(pfam_failed)
         wanted.remove("pfam")
 
     # Handle other databases from OSF
@@ -260,13 +329,23 @@ def main(selected=None, force=False):
         to_download = [f for g in wanted for f in groups.get(g, [])]
         if not to_download:
             warn(f"No files found for: {', '.join(wanted)}")
-            return
-        if not force:
-            to_download = [f for f in to_download if not (DATA_DIR / f["name"]).exists()]
-        if not to_download:
-            info("All requested MetaCerberus files are present!")
-            return
-        download_files(to_download, force=force)
+        else:
+            if not force:
+                to_download = [f for f in to_download if not (DATA_DIR / f["name"]).exists()]
+            if not to_download:
+                info("All requested MetaCerberus files are present!")
+            else:
+                failed = download_files(to_download, force=force)
+                all_failed.extend(failed)
+
+    # Final summary
+    if all_failed:
+        warn(f"\n[bold red]Summary: {len(all_failed)} file(s) failed to download:[/bold red]")
+        for name, err in all_failed:
+            warn(f"  [red]✗[/red] {name}: {err}")
+        raise SystemExit(1)
+    else:
+        info("[bold green]All downloads completed successfully![/bold green]")
 
 
 if __name__ == "__main__":

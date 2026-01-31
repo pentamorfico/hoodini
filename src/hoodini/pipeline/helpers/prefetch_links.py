@@ -10,6 +10,7 @@ This uses the same encoding approach as the user's reference script to build
 datasets API URLs and fetches the sequence-report JSON when a file URL
 requires the assembly ftp path.
 """
+
 from __future__ import annotations
 
 import argparse

@@ -36,7 +36,7 @@ def _normalize_hits_df(hits: pl.DataFrame) -> pl.DataFrame:
     missing = need - set(hits.columns)
     if missing:
         raise ValueError(
-            f"hits_df is missing required columns: {sorted(missing)}. " f"Available: {hits.columns}"
+            f"hits_df is missing required columns: {sorted(missing)}. Available: {hits.columns}"
         )
     return hits.with_columns(
         pl.col("qseqid").cast(pl.Utf8, strict=False),

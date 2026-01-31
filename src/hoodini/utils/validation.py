@@ -13,6 +13,40 @@ from hoodini.utils.id_parsing import categorize_id
 from hoodini.utils.logging_utils import warn
 
 
+def validate_literal_id(query: str) -> None:
+    """
+    Validate that a literal query (not a file) is a valid ID format.
+
+    Accepts:
+    - NCBI protein IDs: WP_*, NP_*, XP_*, YP_*, ZP_*, or 3-letter + 5-8 digits
+    - NCBI nucleotide IDs: NC_*, NZ_*, etc.
+    - UniProt IDs: e.g., P12345, Q9Y6K9
+    - FASTA sequences (start with > or are pure amino acid sequences)
+
+    Raises:
+        ValueError: If the ID format is not recognized
+    """
+    query = query.strip()
+
+    # Allow FASTA sequences
+    if query.startswith(">"):
+        return
+
+    # Allow pure amino acid sequences (all uppercase letters, possibly with *)
+    if re.fullmatch(r"[A-Z*]+", query.replace("\n", ""), re.I):
+        return
+
+    # Check against known ID patterns
+    result = categorize_id(query)
+    if result["type"] == "unmatched":
+        raise ValueError(
+            f"Unrecognized ID format: '{query}'. "
+            "Expected NCBI protein ID (e.g., WP_000000001, NP_414542), "
+            "UniProt ID (e.g., P12345), nucleotide ID (e.g., NC_000913), "
+            "or a FASTA sequence."
+        )
+
+
 def validate_input_file(ctx, param, value):
     """Validate the input file based on its type, either single-column or TSV format."""
     if value is None:
@@ -40,7 +74,7 @@ def validate_input_file(ctx, param, value):
                     match = special_char_pattern.search(line)
                     if match:
                         raise click.BadParameter(
-                            f"Invalid character '{match.group()}' found in line {i+1}: \"{line}\""
+                            f"Invalid character '{match.group()}' found in line {i + 1}: \"{line}\""
                         )
 
             elif param.name == "inputsheet":

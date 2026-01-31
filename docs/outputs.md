@@ -182,7 +182,7 @@ These files are produced depending on your configuration:
     Contains CRISPR array predictions and Cas protein classifications.
   </Tabs.Tab>
   <Tabs.Tab>
-    **`ncrna/`** - Produced with `--ncrna`
+    **`ncrna/`** - Produced with `--ncrna "RFAM_IDs"` or `--ncrna /path/to/model.cm`
 
     <FileTree>
       <FileTree.Folder name="ncrna" defaultOpen>
@@ -191,7 +191,7 @@ These files are produced depending on your configuration:
       </FileTree.Folder>
     </FileTree>
 
-    Non-coding RNA predictions from Infernal (Rfam).
+    Non-coding RNA predictions from Infernal. Accepts RFAM IDs (auto-downloaded) or custom CM files.
   </Tabs.Tab>
   <Tabs.Tab>
     **`genomad/`** - Produced with `--genomad`

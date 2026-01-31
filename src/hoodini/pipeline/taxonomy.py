@@ -309,7 +309,7 @@ def _build_leaf_metadata(records: pl.DataFrame, all_neigh: pl.DataFrame) -> pl.D
 
 
 def _make_tree(records, all_prots, output_dir, threads):
-    from hoodini.utils.logging_utils import info
+    from hoodini.utils.logging_utils import info, warn
 
     valid = records.filter(pl.col("failed").is_null())
     prots = (
@@ -326,6 +326,31 @@ def _make_tree(records, all_prots, output_dir, threads):
     # ensure one sequence per unique_id (neighborhood) and preserve original mapping
     faa = faa.unique(subset=["unique_id"])
     info(f"Building tree from {faa.height} target protein sequences...")
+
+    # Handle edge case: no target proteins available
+    if faa.height == 0:
+        # Check if there are ANY valid records for fallback
+        valid_count = records.filter(pl.col("failed").is_null()).height
+        if valid_count == 0:
+            from hoodini.utils.logging_utils import error
+
+            error("No valid records found. All input sequences failed during processing.")
+            raise SystemExit(1)
+        warn("No target proteins found for tree building. Falling back to taxonomy tree.")
+        return _make_taxonomic_tree(records)
+
+    # Handle edge case: only 1 sequence (can't build a tree)
+    if faa.height == 1:
+        uid = faa["unique_id"][0]
+        warn(f"Only 1 target protein found ({uid}). Creating single-leaf tree.")
+        return f"({uid}:0.0);"
+
+    # Handle edge case: only 2 sequences (FAMSA works but VeryFastTree may have issues)
+    if faa.height == 2:
+        uids = faa["unique_id"].to_list()
+        warn("Only 2 target proteins found. Creating simple 2-leaf tree.")
+        return f"({uids[0]}:0.1,{uids[1]}:0.1);"
+
     to_fasta(faa, "unique_id", "sequence", f"{output_dir}/target_prots.fasta")
 
     info("Running FAMSA alignment...")
@@ -393,11 +418,25 @@ def _make_fast_phylo_tree(records, all_prots, output_dir, nj_algorithm, threads:
 
 
 def _make_taxonomic_tree(records):
+    from hoodini.utils.logging_utils import error, warn
+
     valid = records.filter(pl.col("failed").is_null()).with_row_count("_idx")
-    taxids = valid.select("taxid").drop_nulls().unique().to_series().to_list()
-    distances = calculate_taxid_distances(taxids, update_db=False)
     uids = valid["unique_id"].to_list()
     n = len(uids)
+
+    # Handle edge cases
+    if n == 0:
+        error("No valid records found for tree building. All input sequences failed.")
+        raise SystemExit(1)
+    if n == 1:
+        warn(f"Only 1 valid record for taxonomy tree ({uids[0]}). Creating single-leaf tree.")
+        return f"({uids[0]}:0.0);"
+    if n == 2:
+        warn("Only 2 valid records for taxonomy tree. Creating simple 2-leaf tree.")
+        return f"({uids[0]}:0.1,{uids[1]}:0.1);"
+
+    taxids = valid.select("taxid").drop_nulls().unique().to_series().to_list()
+    distances = calculate_taxid_distances(taxids, update_db=False)
     mat = np.zeros((n, n), dtype=float)
     for a in range(n):
         for b in range(a, n):

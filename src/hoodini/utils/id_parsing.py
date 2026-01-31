@@ -59,7 +59,11 @@ def categorize_id(id_: str) -> dict[str, str | None]:
         re.compile(r"^[A-Z]{4,6}\d{8,}(\.\d+)?$"),
     ]
     protein_patterns = [
-        re.compile(r"^(" + "|".join(["NP", "XP", "YP", "WP", "ZP"]) + r")_\d+(\.\d+)?$"),
+        # WP_ IDs always have exactly 9 digits (e.g., WP_000000001)
+        re.compile(r"^WP_\d{9}(\.\d+)?$"),
+        # NP_, XP_, YP_, ZP_ typically have 6-9 digits
+        re.compile(r"^(" + "|".join(["NP", "XP", "YP", "ZP"]) + r")_\d{6,9}(\.\d+)?$"),
+        # GenBank protein IDs: 3 letters + 5-8 digits (e.g., AAA12345)
         re.compile(r"^[A-Z]{3}\d{5,8}(\.\d+)?$"),
     ]
 

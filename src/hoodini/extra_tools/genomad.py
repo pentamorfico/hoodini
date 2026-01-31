@@ -45,7 +45,7 @@ def run_genomad(all_neigh, output, num_threads, valid_unique_ids):
         "end-to-end",
         "--cleanup",
         "--splits",
-        str(max(1, num_threads or 1)),
+        "8",
         str(neighborhood_fasta),
         str(genomad_dir / "output"),
         str(db_path),

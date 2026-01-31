@@ -79,42 +79,42 @@ graph LR
 
 ### Stage 1: Initialize Inputs
 
-Reads your input file and prepares records for the pipeline. Hoodini accepts multiple input formats.
+Reads your input file and prepares records for the pipeline.
 
 <Tabs items={['CLI', 'Python']}>
   <Tabs.Tab>
     ```bash
-    # With a file of protein IDs (one per line)
-    hoodini run --input proteins.txt --output my_analysis
-
-    # With a single protein ID (triggers remote BLAST search)
+    # With a single protein ID (triggers remote BLAST to find homologs)
     hoodini run --input WP_010922251.1 --output my_analysis
 
-    # With an input sheet (TSV with custom columns)
-    hoodini run --inputsheet my_samples.tsv --output my_analysis
+    # With a file of protein IDs (one per line, no BLAST)
+    hoodini run --input proteins.txt --output my_analysis
 
-    # Using a FASTA file for BLAST search
-    hoodini run --blast query.fasta --output my_analysis
+    # With a file of nucleotide IDs (one per line)
+    hoodini run --input nucleotides.txt --output my_analysis
+
+    # With an input sheet (TSV with custom columns and local files)
+    hoodini run --inputsheet my_samples.tsv --output my_analysis
     ```
 
     <Callout type="warning" emoji="⚠️">
-      **Single ID mode**: Using a single protein ID triggers a remote BLAST search to find homologs. This can take several minutes. Control it with `--remote-evalue` and `--remote-max-targets`.
+      **Single protein ID mode**: Using a single protein ID triggers a remote BLAST search to find homologs. This can take several minutes. Control it with `--remote-evalue` and `--remote-max-targets`.
     </Callout>
   </Tabs.Tab>
   <Tabs.Tab>
     ```python
     from hoodini.pipeline.initialize import initialize_inputs
 
-    # From a file of IDs
-    records = initialize_inputs(
-        input_path="proteins.txt",
-        output=output_dir,
-        force=True,  # Overwrite if exists
-    )
-
     # From a single protein ID (triggers BLAST)
     records = initialize_inputs(
         input_path="WP_010922251.1",
+        output=output_dir,
+        force=True,
+    )
+
+    # From a file of IDs (no BLAST)
+    records = initialize_inputs(
+        input_path="proteins.txt",
         output=output_dir,
         force=True,
     )
@@ -133,13 +133,14 @@ Reads your input file and prepares records for the pipeline. Hoodini accepts mul
 
 | Format | Example | Description |
 |--------|---------|-------------|
-| Protein accession | `WP_010922251.1` | NCBI RefSeq protein |
-| Nucleotide accession | `NC_000913.3` | NCBI chromosome/contig |
-| UniProt ID | `P12345` | Auto-converted to NCBI |
+| Single protein ID | `WP_010922251.1` | Triggers BLAST to find homologs |
+| Protein ID file | `proteins.txt` | One ID per line, no BLAST |
+| Nucleotide ID file | `nucleotides.txt` | One ID per line (contigs, chromosomes) |
+| UniProt ID | `P12345` | Auto-converted to NCBI protein ID |
 | Coordinates | `NC_000913.3:1000-2000` | Specific genomic region |
-| FASTA sequence | `--blast query.fa` | Find homologs via BLAST |
+| Input sheet | `--inputsheet samples.tsv` | TSV with local file paths |
 
-**Remote BLAST options** (when using single ID or FASTA):
+**Remote BLAST options** (when using single protein ID):
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -185,11 +186,15 @@ Queries NCBI's **Identical Protein Groups** to find all genomes containing your 
 
 | Mode | Description | Use case |
 |------|-------------|----------|
-| `any_ipg` | All genomes from IPG groups | Maximum coverage, may have redundancy |
-| `best_ipg` | Best genome per IPG group | Balanced coverage |
-| `best_id` | Best genome per input ID | One representative per query |
-| `one_id` | One genome per input | Minimal set |
-| `same_id` | Only exact ID matches | Strict matching |
+| `best_id` *(default)* | Best representative per input, protein ID must match | One representative per query |
+| `best_ipg` | Best representative per input, allows different IDs | Balanced coverage |
+| `same_id` | All IPG records with same protein ID | For non-redundant proteins (`WP_`, `YP_`, `NP_`) |
+| `any_ipg` | All genomes from IPG groups | Maximum coverage (can expand massively) |
+| `one_id` | First IPG record per input | Minimal set, ignores assembly quality |
+
+<Callout type="warning">
+  Using `any_ipg` or `same_id` can dramatically increase the number of neighborhoods if your query protein is highly conserved across many assemblies.
+</Callout>
 
 <Callout type="info">
   IPG finds **identical** protein sequences across genomes. BLAST homology search (for similar but not identical proteins) happens in Stage 1 when using single-query mode.
@@ -240,7 +245,7 @@ Downloads assemblies from NCBI and extracts genomic contexts around your query p
         wn=20000,         # Window size
         min_win=None,     # Minimum window size
         min_win_type="total",  # "total", "upstream", "downstream", "both"
-        ncrna=True,       # Run Infernal for ncRNA
+        ncrna="RF02348,RF00001",  # RFAM IDs or path to CM file
         cctyper=True,     # Run CRISPR-Cas typing
         genomad=True,     # Run mobile element detection
     )
@@ -310,9 +315,9 @@ Groups similar proteins into families for easier visualization. Proteins in the 
 | Method | Speed | Description |
 |--------|-------|-------------|
 | `diamond_deepclust` | ⚡ Fast | Hierarchical clustering with Diamond. Best for most cases |
-| `deepmmseqs` | ⚡ Fast | MMseqs2-based deep clustering. Good sensitivity |
+| `deepmmseqs` | 🐢 Slow | MMseqs2-based deep clustering. Good sensitivity |
 | `jackhmmer` | 🐢 Slow | Iterative HMM search. Best sensitivity for divergent proteins |
-| `blastp` | 🐢 Slow | Traditional all-vs-all BLAST. Most thorough |
+| `blastp` | ⏱️ Medium | Traditional all-vs-all BLAST. Most thorough |
 
 ### Stage 5: Build Phylogenetic Tree
 
@@ -379,37 +384,38 @@ Creates a tree showing relationships between genomes. The tree determines how ne
 
 | Mode | Speed | Description |
 |------|-------|-------------|
-| `taxonomy` | ⚡ Instant | Uses NCBI taxonomy hierarchy. No computation needed |
-| `fast_nj` | ⚡ Fast | Quick neighbor-joining tree |
-| `aai_tree` | 🔄 Medium | Average Amino acid Identity between genomes |
-| `ani_tree` | 🔄 Medium | Average Nucleotide Identity (works best >70% ANI) |
-| `fast_ml` | 🐢 Slow | Maximum likelihood tree |
-| `use_input_tree` | ⚡ Instant | Use your own Newick file (requires `--tree-file`) |
-| `foldmason_tree` | 🐢 Slow | Structure-based alignment with FoldMason |
-| `neigh_similarity_tree` | 🔄 Medium | Based on neighborhood gene content similarity |
-| `neigh_phylo_tree` | 🐢 Slow | Phylogenetic tree of neighborhood sequences |
+| `taxonomy` | ⚡ Instant | Builds tree from NCBI taxonomy hierarchy. Pairwise distances computed from taxonomic rank differences |
+| `fast_nj` | ⚡ Fast | FAMSA pairwise distance matrix → DecentTree neighbor-joining |
+| `aai_tree` | 🔄 Medium | Requires `--pairwise-aai`. DecentTree NJ from AAI distances (100 - AAI%). Missing pairs filled with max+2σ |
+| `ani_tree` | 🔄 Medium | Requires `--pairwise-ani`. DecentTree NJ from ANI distances (100 - ANI%). Only meaningful above ~70% ANI |
+| `fast_ml` | 🐢 Slow | FAMSA alignment → VeryFastTree maximum likelihood |
+| `use_input_tree` | ⚡ Instant | Load user-provided Newick file. Requires `--tree-file path/to/tree.nwk` |
+| `foldmason_tree` | 🐢 Slow | Maps proteins to UniProt → fetches AlphaFold structures → FoldMason structural alignment → VeryFastTree. Falls back to `fast_ml` if mapping fails |
+| `neigh_similarity_tree` | 🔄 Medium | Jaccard distance from neighborhood gene family presence/absence matrix → hierarchical clustering |
+| `neigh_phylo_tree` | 🐢 Slow | Position-weighted neighborhood gene content (genes closer to target weighted higher) → cosine distance → hierarchical clustering |
 
-<Tabs items={['taxonomy', 'aai_tree', 'ani_tree']}>
+<Tabs items={['Target protein trees', 'Genome-based trees', 'Neighborhood-based trees']}>
   <Tabs.Tab>
-    **Taxonomy tree** (fastest): Uses NCBI taxonomy hierarchy.
-    - ✅ Instant computation
-    - ✅ Biologically meaningful groupings
-    - ❌ Doesn't reflect your specific data
-    - 📋 Best for: Quick overview, large datasets
+    **Target protein trees** (`taxonomy`, `fast_nj`, `fast_ml`, `foldmason_tree`, `use_input_tree`):
+    - Group neighborhoods by the evolutionary relationship of the target protein
+    - `taxonomy`: fastest, groups by species/genus/family but doesn't reflect sequence divergence
+    - `fast_nj`: good balance of speed and accuracy for most cases
+    - `fast_ml`: more accurate topology, slower
+    - `foldmason_tree`: best for remote homologs where sequence similarity is low but structure is conserved
   </Tabs.Tab>
   <Tabs.Tab>
-    **AAI tree**: Based on Average Amino acid Identity.
-    - ✅ Data-driven clustering
-    - ✅ Works across wide evolutionary distances
-    - ❌ Requires pairwise protein comparisons
-    - 📋 Best for: Diverse protein families
+    **Genome-based trees** (`aai_tree`, `ani_tree`):
+    - Group neighborhoods by overall genome similarity, not target protein
+    - Requires running `--pairwise-aai` or `--pairwise-ani` in the pipeline
+    - `aai_tree`: works across wider evolutionary distances
+    - `ani_tree`: best for closely related genomes (>70% ANI), standard for species delineation
   </Tabs.Tab>
   <Tabs.Tab>
-    **ANI tree**: Based on Average Nucleotide Identity.
-    - ✅ Strain-level resolution
-    - ✅ Standard for species delineation
-    - ❌ Only meaningful for closely related genomes (>70% ANI)
-    - 📋 Best for: Closely related strains/species
+    **Neighborhood-based trees** (`neigh_similarity_tree`, `neigh_phylo_tree`):
+    - Group by the **gene content** of the neighborhood, not target protein sequence
+    - `neigh_similarity_tree`: binary presence/absence of gene families
+    - `neigh_phylo_tree`: accounts for gene position (genes closer to target contribute more)
+    - Best for: detecting operon rearrangements, gene gain/loss patterns
   </Tabs.Tab>
 </Tabs>
 
@@ -552,12 +558,15 @@ Add functional annotations to proteins and neighborhoods.
         # Mobile genetic elements with geNomad
         hoodini run --input proteins.txt --output my_analysis --genomad
 
-        # Non-coding RNA with Infernal
-        hoodini run --input proteins.txt --output my_analysis --ncrna
+        # Non-coding RNA with Infernal (using RFAM IDs - auto-downloaded)
+        hoodini run --input proteins.txt --output my_analysis --ncrna "RF02348,RF00001"
+
+        # Non-coding RNA with custom CM file
+        hoodini run --input proteins.txt --output my_analysis --ncrna /path/to/my_model.cm
 
         # All three
         hoodini run --input proteins.txt --output my_analysis \
-          --cctyper --genomad --ncrna
+          --cctyper --genomad --ncrna "RF02348"
         ```
       </Tabs.Tab>
       <Tabs.Tab>
@@ -872,7 +881,7 @@ After running the pipeline, your custom columns appear in:
       --domains pfam,tigrfam \
       --cctyper \
       --genomad \
-      --ncrna
+      --ncrna "RF02348"
 
     echo "🎉 Done! Open cas9_analysis/hoodini-viz/hoodini-viz.html"
     ```

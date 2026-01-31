@@ -20,6 +20,7 @@ from rich.progress import (
 )
 
 from hoodini.utils.logging_utils import info, warn
+from hoodini.utils.seq_io import to_fasta  # noqa: F401 - registers pl.DataFrame.to_fasta
 
 
 def _is_na(x):
@@ -30,7 +31,6 @@ def _is_na(x):
 
 
 def _fasta_ids(fasta_path: str):
-
     ids = [rec.id for rec in SeqIO.parse(fasta_path, "fasta")]
     if not ids:
         raise ValueError("No sequences found.")
@@ -301,7 +301,6 @@ def _skani_like_from_blast(
 
 
 def _run_mappy_target_block(args):
-
     (fasta_path, preset, min_mapq, mm2_threads_per_worker, tid, q_ids) = args
     idx = SeqIO.index(fasta_path, "fasta")
     try:
@@ -1052,27 +1051,30 @@ def run_pairwise_nt(
             dtypes={"qseqid": pl.Utf8, "sseqid": pl.Utf8},
         )
 
-        meta = meta_df.clone().rename(
-            {"temp_seqid": "temp_id", "seqid": "canonical_seqid", "start_win": "start_win"}
-        )
+        meta = meta_df.clone().rename({"temp_seqid": "temp_id", "seqid": "canonical_seqid"})
+        # Join for query side
         raw = raw.join(
             meta.select(["temp_id", "canonical_seqid", "start_win"]),
             left_on="qseqid",
             right_on="temp_id",
             how="left",
         )
-        raw = raw.rename({"canonical_seqid": "q_canonical", "start_win": "q_start_win"}).drop(
-            ["temp_id"]
-        )
+        raw = raw.rename({"canonical_seqid": "q_canonical", "start_win": "q_start_win"})
+        # Drop temp_id only if it exists (Polars may drop it automatically in join)
+        if "temp_id" in raw.columns:
+            raw = raw.drop(["temp_id"])
+
+        # Join for subject side
         raw = raw.join(
             meta.select(["temp_id", "canonical_seqid", "start_win"]),
             left_on="sseqid",
             right_on="temp_id",
             how="left",
         )
-        raw = raw.rename({"canonical_seqid": "s_canonical", "start_win": "s_start_win"}).drop(
-            ["temp_id"]
-        )
+        raw = raw.rename({"canonical_seqid": "s_canonical", "start_win": "s_start_win"})
+        # Drop temp_id only if it exists
+        if "temp_id" in raw.columns:
+            raw = raw.drop(["temp_id"])
 
         raw = raw.filter(pl.col("q_canonical").is_not_null() & pl.col("s_canonical").is_not_null())
         raw = raw.filter(pl.col("q_canonical") != pl.col("s_canonical"))

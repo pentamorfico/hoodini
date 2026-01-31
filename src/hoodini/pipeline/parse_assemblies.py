@@ -324,6 +324,27 @@ def run_assembly_parser(
 
     records, actual_assembly_folder = _download_assemblies(records)
 
+    # Mark records without assembly_id and without local files as failed
+    no_assembly_mask = (
+        records["assembly_id"].is_null()
+        & records["gbf_path"].is_null()
+        & (records["gff_path"].is_null() | records["faa_path"].is_null())
+        & records["failed"].is_null()
+    )
+    no_assembly_count = no_assembly_mask.sum()
+    if no_assembly_count > 0:
+        records = records.with_columns(
+            pl.when(no_assembly_mask)
+            .then(pl.lit(True))
+            .otherwise(pl.col("failed"))
+            .alias("failed"),
+            pl.when(no_assembly_mask)
+            .then(pl.lit("No assembly found for this record"))
+            .otherwise(pl.col("failed_reason"))
+            .alias("failed_reason"),
+        )
+        warn(f"{no_assembly_count} records have no assembly and were marked as failed")
+
     def write_fasta(df: pl.DataFrame, id_col: str, seq_col: str, path: str) -> None:
         with open(path, "w") as fh:
             for row in df.select([id_col, seq_col]).iter_rows(named=True):
@@ -550,6 +571,28 @@ def run_assembly_parser(
                     .drop("failed_short", "failed_reason_short")
                 )
                 warn(f"{len(short_contigs)} contigs below min window size: {short_contigs}")
+
+            # Check if any valid records remain after marking failures
+            valid_count = df.filter(pl.col("failed").is_null()).height
+            total_count = df.height
+            failed_count = total_count - valid_count
+            # Count pre-existing failures (e.g., no assembly)
+            pre_existing_failures = failed_count - len(short_contigs) - len(failed_ids)
+            if valid_count == 0:
+                df.write_csv(output_dir / "records.csv", separator=",", quote_style="necessary")
+                failure_parts = []
+                if len(short_contigs) > 0:
+                    failure_parts.append(f"{len(short_contigs)} below min window size")
+                if len(failed_ids) > 0:
+                    failure_parts.append(f"{len(failed_ids)} extraction failures")
+                if pre_existing_failures > 0:
+                    failure_parts.append(f"{pre_existing_failures} without assembly")
+                failure_summary = ", ".join(failure_parts) if failure_parts else "unknown reasons"
+                error(
+                    f"Aborting! All {total_count} records failed ({failure_summary}). "
+                    f"Consider decreasing --min-win to accept smaller neighborhoods, or checking your input sequences."
+                )
+                sys.exit(1)
 
             if failed_ids:
                 df = (

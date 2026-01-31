@@ -1,43 +1,69 @@
-# Hoodini CLI
+# Quick Start
 
-Hoodini is a gene‑centric comparative genomics toolkit for microbial genomes. It automates sequence retrieval, neighborhood extraction, optional comparative analyses, and interactive visualization.
+This guide shows minimal runs and then summarizes the pipeline so you know what happens after you launch a job.
 
-This documentation is written for biologists and bioinformaticians working in microbial genomics. It explains how to run the CLI, how to structure inputs, and what each pipeline stage does.
+## 1) Single protein accession
 
-## Inputs at a glance
+```bash
+hoodini run --input WP_012345678.1 --output results
+```
 
-You can run Hoodini with either:
+Hoodini will download assemblies, extract neighborhoods, and generate a viewer in the output directory.
 
-- --input: a literal protein accession or FASTA string, or a multi‑line text file with one ID per line
-- --inputsheet: a TSV with required columns nucleotide_id, protein_id, gff_path, fna_path, faa_path
+## 2) Batch input
 
-## Pipeline at a glance
+Create a file with one accession per line:
 
-Hoodini performs the following stages, with optional steps enabled by flags:
+```bash
+cat > proteins.txt << EOF
+WP_012345678.1
+WP_087654321.1
+WP_111222333.1
+EOF
 
-1. Initialize inputs and output folder.
-2. Parse IPG relationships for candidate selection.
+hoodini run --input proteins.txt --output results
+```
+
+## 3) Add protein links and a tree
+
+```bash
+hoodini run --input proteins.txt --output results \
+  --prot-links \
+  --tree-mode aai_tree
+```
+
+## 4) Add annotations
+
+```bash
+hoodini run --input proteins.txt --output results \
+  --padloc --deffinder --cctyper --genomad
+```
+
+## 5) Provide a TSV with metadata
+
+Use a TSV with the required columns and local file paths:
+
+```bash
+hoodini run --inputsheet my_samples.tsv --output results
+```
+
+## Pipeline summary (what happens under the hood)
+
+1. Initialize inputs and output directory.
+2. Resolve IPG records and select candidates.
 3. Download assemblies and extract neighborhoods.
-4. Protein comparisons (optional; required for AAI trees).
-5. Nucleotide comparisons (optional; required for ANI trees).
-6. Protein clustering.
-7. Proteome similarity for AAI trees.
-8. Tree construction.
-9. Extra annotations (domains, PADLOC, DefenseFinder, CCTyper, geNomad, ncRNA, eggNOG‑mapper).
-10. Visualization bundle and tables.
+4. Optional protein comparisons and nucleotide comparisons.
+5. Protein clustering and (optional) AAI/ANI tree construction.
+6. Optional annotation tools (PADLOC, DefenseFinder, CCTyper, geNomad, ncRNA, eggNOG‑mapper).
+7. Write visualization bundle and tabular outputs.
 
-See [CLI Reference](cli-reference) for stage‑by‑stage details and outputs.
+## Tips
 
-## When to use Hoodini
+- Add an NCBI API key to increase rate limits:
+  ```bash
+  export NCBI_API_KEY="your_key"
+  ```
+- Use --assembly-folder to reuse local GenBank/GFF files.
+- If you only want neighborhood extraction, skip --prot-links and --tree-mode.
 
-- Compare neighborhoods across many genomes for a protein of interest.
-- Explore synteny, operons, and genomic islands at scale.
-- Add defense and mobile element annotations.
-- Generate publication‑ready figures.
-
-## Next steps
-
-- [Installation](installation)
-- [Quick Start](quickstart)
-- [CLI Reference](cli-reference)
-si
+Next: read [CLI Reference](cli-reference) for full options and pipeline details.

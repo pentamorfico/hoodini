@@ -10,6 +10,7 @@ from click.core import ParameterSource
 from rich.logging import RichHandler
 
 from hoodini.config import build_runtime_config, load_default_config
+from hoodini.extra_tools.ncrna import validate_ncrna_input
 from hoodini.pipeline.runner import run_pipeline
 from hoodini.utils.cli_helpers import MutuallyExclusiveOption
 from hoodini.utils.logging_utils import (
@@ -20,7 +21,7 @@ from hoodini.utils.logging_utils import (
     stage_header,
     success,
 )
-from hoodini.utils.validation import validate_domains, validate_input_file
+from hoodini.utils.validation import validate_domains, validate_input_file, validate_literal_id
 
 click.rich_click.USE_RICH_MARKUP = True
 click.rich_click.STYLE_ERRORS_SUGGESTIONS = "yellow"
@@ -40,7 +41,7 @@ click.rich_click.OPTION_GROUPS = {
         },
         {
             "name": "Data Sources",
-            "options": ["--assembly-folder", "--blast"],
+            "options": ["--assembly-folder"],
         },
         {
             "name": "Neighborhood Window",
@@ -81,6 +82,7 @@ click.rich_click.OPTION_GROUPS = {
                 "--sorfs",
                 "--emapper",
                 "--domains",
+                "--blast",
             ],
         },
         {
@@ -221,9 +223,9 @@ def cli():
 @click.option("--deffinder", is_flag=True, help="Run DefenseFinder for antiphage defense.")
 @click.option(
     "--ncrna",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    type=str,
     default=None,
-    help="Path to CM models file for ncRNA prediction with Infernal (e.g., Rfam.cm).",
+    help="ncRNA prediction: path to CM file OR comma-separated RFAM IDs (e.g., RF00001,RF00234).",
 )
 @click.option("--cctyper", is_flag=True, help="Run CCtyper for CRISPR-Cas prediction.")
 @click.option("--genomad", is_flag=True, help="Run GenoMAD for MGE identification.")
@@ -303,6 +305,23 @@ def run(ctx, config_file: str | None, quiet: bool, debug: bool, **cli_kwargs) ->
 
     if not config.input_path and not config.inputsheet:
         raise click.UsageError("One of '--input' or '--inputsheet' must be provided.")
+
+    # Early validation of literal IDs and file paths
+    if config.input_path and not Path(config.input_path).exists():
+        # It's a literal ID, validate format
+        try:
+            validate_literal_id(config.input_path)
+        except ValueError as e:
+            raise click.UsageError(str(e))
+    if config.ncrna:
+        try:
+            validate_ncrna_input(config.ncrna)
+        except (ValueError, FileNotFoundError) as e:
+            raise click.UsageError(str(e))
+    if config.blast:
+        blast_path = Path(config.blast)
+        if not blast_path.exists():
+            raise click.UsageError(f"BLAST query file not found: {config.blast}")
 
     ctx.ensure_object(dict)
     ctx.obj["config"] = config

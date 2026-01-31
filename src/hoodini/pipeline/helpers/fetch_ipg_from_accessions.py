@@ -55,7 +55,7 @@ def _efetch_chunk(accessions: list[str]) -> str:
                     "500" in result.stderr or "ERROR" in result.stderr
                 ) and attempt < max_retries - 1:
                     warn(
-                        f"efetch error 500/network issue (attempt {attempt+1}/{max_retries}), retrying in 5s..."
+                        f"efetch error 500/network issue (attempt {attempt + 1}/{max_retries}), retrying in 5s..."
                     )
                     time.sleep(5)
                     continue
@@ -66,7 +66,7 @@ def _efetch_chunk(accessions: list[str]) -> str:
         except subprocess.CalledProcessError as e:
             if attempt < max_retries - 1:
                 warn(
-                    f"efetch failed (attempt {attempt+1}/{max_retries}): {e.stderr[:200]}, retrying..."
+                    f"efetch failed (attempt {attempt + 1}/{max_retries}): {e.stderr[:200]}, retrying..."
                 )
                 time.sleep(5)
                 continue
@@ -76,7 +76,7 @@ def _efetch_chunk(accessions: list[str]) -> str:
             return ""
         except subprocess.TimeoutExpired:
             if attempt < max_retries - 1:
-                warn(f"efetch timeout (attempt {attempt+1}/{max_retries}), retrying...")
+                warn(f"efetch timeout (attempt {attempt + 1}/{max_retries}), retrying...")
                 time.sleep(5)
                 continue
             error(f"efetch timeout for IDs {accessions[:3]}... after {max_retries} attempts")
