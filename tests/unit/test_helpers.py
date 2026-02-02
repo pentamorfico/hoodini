@@ -7,7 +7,27 @@ Tests:
 - Other utility functions
 """
 
+import pytest
 
+# Check if data files exist for conditional skipping
+try:
+    from importlib.resources import files
+
+    _data_path = files("hoodini").joinpath("data", "contig_lengths")
+    _has_contig_data = any(_data_path.iterdir())
+except Exception:
+    _has_contig_data = False
+
+try:
+    from importlib.resources import files
+
+    _asm_path = files("hoodini").joinpath("data", "assembly_summary.parquet")
+    _has_assembly_data = _asm_path.is_file()
+except Exception:
+    _has_assembly_data = False
+
+
+@pytest.mark.skipif(not _has_contig_data, reason="contig_lengths data not available")
 class TestNuc2Asmlen:
     """Tests for nuc2asmlen utility."""
 
@@ -35,6 +55,7 @@ class TestNuc2Asmlen:
         assert isinstance(df, pl.DataFrame)
 
 
+@pytest.mark.skipif(not _has_assembly_data, reason="assembly_summary data not available")
 class TestPrefetchLinks:
     """Tests for prefetch_links utility."""
 
