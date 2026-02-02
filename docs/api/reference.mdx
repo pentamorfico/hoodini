@@ -571,7 +571,6 @@ Pipeline Stages and File I/O:
     Expects: records, all_gff, all_neigh, all_prots DataFrames
     Generates:
     - &#123;output&#125;/tree.nwk
-    - &#123;output&#125;/records.csv
     Returns: tree_str, den_data DataFrame
 
 9. EXTRA ANNOTATIONS (optional tools)
@@ -615,7 +614,6 @@ Parse taxonomic information and build phylogenetic tree.
 
 **Generated Files:**
 - &#123;output&#125;/tree.nwk: Newick format phylogenetic tree
-- &#123;output&#125;/records.csv: Final records with taxonomy and metadata
 
 **Process:**
 1. Enriches records with NCBI taxonomy (superkingdom, phylum, class, order, family, genus, species)

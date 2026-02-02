@@ -24,6 +24,7 @@ dependencies:
   - famsa
   - veryfasttree
   - firefox
+  - foldmason
   - gtk3
   - atk
   - xorg-libxcomposite

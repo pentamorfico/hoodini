@@ -484,7 +484,8 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
                     except Exception as e:
                         warn(f"Failed backfill join: {e}")
 
-    # Fill coordinates for nucleotide inputs if missing
+    # Fill coordinates for nucleotide inputs if missing and mark as full contig
+    # Condition for non-premade (NCBI) nucleotide inputs without coordinates
     cond = (
         (pl.col("input_type") == "nucleotide")
         & (pl.col("nucleotide_id").is_not_null())
@@ -493,6 +494,26 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
         & (pl.col("start").is_null())
         & (pl.col("end").is_null())
     )
+    
+    # Condition for premade (local files) without coordinates - also full contig
+    cond_premade = (
+        (pl.col("premade"))
+        & (pl.col("failed").is_null())
+        & (pl.col("start").is_null())
+        & (pl.col("end").is_null())
+    )
+    
+    # Add is_full_contig flag BEFORE setting start/end
+    # Both non-premade nucleotide inputs AND premade local files without coords are full contig
+    if "is_full_contig" not in df.columns:
+        df = df.with_columns(pl.lit(False).alias("is_full_contig"))
+    df = df.with_columns(
+        pl.when(cond | cond_premade)
+        .then(pl.lit(True))
+        .otherwise(pl.col("is_full_contig"))
+        .alias("is_full_contig")
+    )
+    
     df = df.with_columns(
         pl.when(cond).then(pl.lit(0)).otherwise(pl.col("start")).alias("start"),
         pl.when(cond).then(pl.col("sequence_length")).otherwise(pl.col("end")).alias("end"),
@@ -653,6 +674,42 @@ def _finalize_ipg(df: pl.DataFrame, cand_mode: str) -> pl.DataFrame:
         .then(pl.lit("Invalid superkingdom"))
         .otherwise(pl.col("failed_reason"))
         .alias("failed_reason"),
+    )
+
+    # Fix assembly prefix to match nucleotide type (GenBank nuc -> GCA, RefSeq nuc -> GCF)
+    # This ensures we download the correct assembly version that contains the nucleotide_id
+    from hoodini.utils.id_parsing import is_refseq_nuccore, switch_assembly_prefix
+
+    def fix_asm(nuc_id: str | None, asm_id: str | None) -> str | None:
+        if nuc_id is None or asm_id is None:
+            return asm_id
+        # If nucleotide is RefSeq (NC_, NZ_, etc.) but assembly is GenBank (GCA_) -> switch to GCF_
+        # If nucleotide is GenBank (MZ, etc.) but assembly is RefSeq (GCF_) -> switch to GCA_
+        if (
+            is_refseq_nuccore(nuc_id)
+            and str(asm_id).startswith("GCA_")
+            or not is_refseq_nuccore(nuc_id)
+            and str(asm_id).startswith("GCF_")
+        ):
+            return switch_assembly_prefix(asm_id)
+        return asm_id
+
+    fix_mask = (
+        (pl.col("failed").is_null())
+        & (~pl.col("premade"))
+        & (pl.col("nucleotide_id").is_not_null())
+        & (pl.col("assembly_id").is_not_null())
+    )
+
+    df = df.with_columns(
+        pl.when(fix_mask)
+        .then(
+            pl.concat_list(["nucleotide_id", "assembly_id"]).map_elements(
+                lambda x: fix_asm(x[0], x[1]), return_dtype=pl.Utf8
+            )
+        )
+        .otherwise(pl.col("assembly_id"))
+        .alias("assembly_id")
     )
 
     return df

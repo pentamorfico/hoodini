@@ -39,6 +39,9 @@ hoodini run --input <accessions.txt> --output results/
     
     # Literal protein accession
     hoodini run --input "WP_012345678.1"
+    
+    # Nucleotide with coordinates
+    hoodini run --input "NC_000913.3:1000-5000"
     ```
     
     <Callout type="info">
@@ -47,21 +50,29 @@ hoodini run --input <accessions.txt> --output results/
   </Tabs.Tab>
   
   <Tabs.Tab>
-    **TSV with pre-computed metadata**
+    **TSV with metadata, local files, or custom columns**
     
     ```bash
     hoodini run --inputsheet metadata.tsv
     ```
     
-    Required columns:
-    - `nucleotide_id`
-    - `protein_id`
-    - `gff_path`
-    - `fna_path`
-    - `faa_path`
+    **Minimum required** (at least one of):
+    - `nucleotide_id` — NCBI nucleotide accession
+    - `protein_id` — NCBI protein accession  
+    - `uniprot_id` — UniProt accession
     
-    Optional columns carried forward:
-    - `uniprot_id`, `gbf_path`, `taxid`, `assembly_id`, `input_type`, `premade`, `failed`
+    **For local files** (GFF + FAA or GenBank):
+    - `gff_path`, `faa_path` — local annotation files
+    - `gbf_path` — alternative: GenBank format
+    
+    **Coordinates** (optional):
+    - `start`, `end`, `strand` — analyze specific region
+    
+    **Custom columns**: Any additional columns are preserved and appear in final outputs (`hoods.txt`, `tree_metadata.txt`).
+    
+    <Callout type="info" emoji="📖">
+      See [Input Formats](/input-formats) for complete documentation on inputsheet structure and custom columns.
+    </Callout>
   </Tabs.Tab>
 </Tabs>
 

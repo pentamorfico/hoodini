@@ -389,6 +389,7 @@ def run_assembly_parser(
                         row.get("unique_id"),
                         row.get("input_type"),
                         sorfs,
+                        row.get("is_full_contig", False),
                     )
                 )
 
@@ -503,13 +504,20 @@ def run_assembly_parser(
             all_neigh.drop("sequence").write_csv(output_dir / "all_neigh.tsv", separator="\t")
 
             if minwin is not None:
+                # Exclude full contig analyses from minwin filtering
+                # (when start/end weren't specified, the whole contig is the target)
+                if "is_full_contig" in all_neigh.columns:
+                    filterable = all_neigh.filter(pl.col("is_full_contig") == False)  # noqa: E712
+                else:
+                    filterable = all_neigh
+                
                 if minwin_type == "total":
                     short_contigs = (
-                        all_neigh.filter(pl.col("length") < minwin)["unique_id"].unique().to_list()
+                        filterable.filter(pl.col("length") < minwin)["unique_id"].unique().to_list()
                     )
                 elif minwin_type == "upstream":
                     short_contigs = (
-                        all_neigh.filter((pl.col("start_target") - pl.col("start_win")) < minwin)[
+                        filterable.filter((pl.col("start_target") - pl.col("start_win")) < minwin)[
                             "unique_id"
                         ]
                         .unique()
@@ -517,7 +525,7 @@ def run_assembly_parser(
                     )
                 elif minwin_type == "downstream":
                     short_contigs = (
-                        all_neigh.filter((pl.col("end_win") - pl.col("end_target")) < minwin)[
+                        filterable.filter((pl.col("end_win") - pl.col("end_target")) < minwin)[
                             "unique_id"
                         ]
                         .unique()
@@ -525,7 +533,7 @@ def run_assembly_parser(
                     )
                 else:
                     short_contigs = (
-                        all_neigh.filter(
+                        filterable.filter(
                             ((pl.col("start_target") - pl.col("start_win")) < minwin)
                             | ((pl.col("end_win") - pl.col("end_target")) < minwin)
                         )["unique_id"]
@@ -579,7 +587,7 @@ def run_assembly_parser(
             # Count pre-existing failures (e.g., no assembly)
             pre_existing_failures = failed_count - len(short_contigs) - len(failed_ids)
             if valid_count == 0:
-                df.write_csv(output_dir / "records.csv", separator=",", quote_style="necessary")
+                df.write_csv(output_dir / "records.tsv", separator="\t", quote_style="necessary")
                 failure_parts = []
                 if len(short_contigs) > 0:
                     failure_parts.append(f"{len(short_contigs)} below min window size")
@@ -649,7 +657,7 @@ def run_assembly_parser(
             if subset_neigh.height > 0:
                 write_fasta(subset_neigh, "temp_seqid", "sequence", neigh_fasta)
 
-            df.write_csv(output_dir / "records.csv", separator=",", quote_style="necessary")
+            df.write_csv(output_dir / "records.tsv", separator="\t", quote_style="necessary")
 
             subset_gff = (
                 all_prots.select([c for c in ["id", "sequence"] if c in all_prots.columns])
@@ -690,7 +698,7 @@ def run_assembly_parser(
                     )
                     .drop("failed_fail", "failed_reason_fail")
                 )
-            df.write_csv(output_dir / "records.csv", separator=",", quote_style="necessary")
+            df.write_csv(output_dir / "records.tsv", separator="\t", quote_style="necessary")
             error("Aborting! All IDs failed to yield neighborhoods.")
             sys.exit(1)
 

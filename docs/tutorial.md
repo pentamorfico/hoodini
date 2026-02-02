@@ -138,7 +138,11 @@ Reads your input file and prepares records for the pipeline.
 | Nucleotide ID file | `nucleotides.txt` | One ID per line (contigs, chromosomes) |
 | UniProt ID | `P12345` | Auto-converted to NCBI protein ID |
 | Coordinates | `NC_000913.3:1000-2000` | Specific genomic region |
-| Input sheet | `--inputsheet samples.tsv` | TSV with local file paths |
+| Input sheet | `--inputsheet samples.tsv` | TSV with metadata and custom columns |
+
+<Callout type="info" emoji="📖">
+  See [Input Formats](/input-formats) for complete documentation on inputsheet structure, local files, and custom columns that propagate to outputs.
+</Callout>
 
 **Remote BLAST options** (when using single protein ID):
 
@@ -661,6 +665,8 @@ Package everything into the interactive viewer.
 
 ## Output Structure
 
+By default, temporary files are cleaned up after the pipeline completes. Use `--keep` to preserve all intermediate files.
+
 <FileTree>
   <FileTree.Folder name="my_analysis" defaultOpen>
     <FileTree.Folder name="hoodini-viz" defaultOpen>
@@ -680,16 +686,20 @@ Package everything into the interactive viewer.
         <FileTree.File name="tree_metadata.txt" />
       </FileTree.Folder>
       <FileTree.File name="tree.nwk" />
-      <FileTree.File name="hoodini-viz.html" />
+      <FileTree.File name="*.html" />
     </FileTree.Folder>
-    <FileTree.Folder name="assembly_folder">
-      <FileTree.File name="GCA_000001234.1/" />
-      <FileTree.File name="GCA_000005678.1/" />
+    <FileTree.Folder name="neighborhood">
+      <FileTree.File name="neighborhoods.fasta" />
     </FileTree.Folder>
-    <FileTree.File name="all_neigh.tsv" />
-    <FileTree.File name="records.csv" />
+    <FileTree.File name="records.tsv" />
+    <FileTree.File name="target_prots.fasta" />
+    <FileTree.File name="target_prots.aln" />
   </FileTree.Folder>
 </FileTree>
+
+<Callout type="info" emoji="💡">
+  With `--keep`, additional directories are preserved: `assembly_folder/` (downloaded genomes), `tmp_mmseqs/` (clustering intermediates), and tool-specific temp files.
+</Callout>
 
 ---
 

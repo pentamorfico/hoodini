@@ -52,7 +52,6 @@ def parse_taxonomy_and_build_tree(
     Generated Files:
     ----------------
     - {output}/tree.nwk: Newick format phylogenetic tree
-    - {output}/records.csv: Final records with taxonomy and metadata
 
     Process:
     --------
@@ -296,15 +295,33 @@ def _build_leaf_metadata(records: pl.DataFrame, all_neigh: pl.DataFrame) -> pl.D
     dive_cols = ["dive_id", "collection_id", "dive_type"]
     base_cols = ["unique_id", "og_index"] + taxcols
     extra_cols = [c for c in dive_cols if c in records.columns]
+    
+    # Include user-provided extra columns from inputsheet
+    # These are columns that are not in the reserved set (defined in validation.py)
+    from hoodini.utils.validation import RESERVED_COLUMNS
+    user_extra_cols = [c for c in records.columns 
+                       if c not in RESERVED_COLUMNS 
+                       and c not in base_cols 
+                       and c not in extra_cols
+                       and not c.startswith("_")]  # Exclude internal columns
 
-    den_data = records.select(base_cols + extra_cols)
-    den_data = den_data.join(
-        all_neigh.select(
-            ["unique_id", "start_win", "end_win", "strand_win", "start_target", "end_target"]
-        ),
-        on="unique_id",
-        how="left",
-    )
+    # Filter out failed records - only include successful ones in tree metadata
+    valid_records = records.filter(pl.col("failed").is_null())
+    den_data = valid_records.select(base_cols + extra_cols + user_extra_cols)
+
+    # Select neighborhood columns including seqid and target_prot (as align_gene)
+    neigh_cols = ["unique_id", "start_win", "end_win", "strand_win", "start_target", "end_target"]
+    if "seqid" in all_neigh.columns:
+        neigh_cols.append("seqid")
+    if "target_prot" in all_neigh.columns:
+        neigh_cols.append("target_prot")
+
+    neigh_data = all_neigh.select(neigh_cols)
+    # Rename target_prot to align_gene for visualization consistency
+    if "target_prot" in neigh_data.columns:
+        neigh_data = neigh_data.rename({"target_prot": "align_gene"})
+
+    den_data = den_data.join(neigh_data, on="unique_id", how="left")
     return den_data
 
 
@@ -435,7 +452,19 @@ def _make_taxonomic_tree(records):
         warn("Only 2 valid records for taxonomy tree. Creating simple 2-leaf tree.")
         return f"({uids[0]}:0.1,{uids[1]}:0.1);"
 
-    taxids = valid.select("taxid").drop_nulls().unique().to_series().to_list()
+    # Filter out records without taxid and warn
+    valid_with_taxid = valid.filter(pl.col("taxid").is_not_null())
+    missing_taxid_count = n - valid_with_taxid.height
+    if missing_taxid_count > 0:
+        warn(f"{missing_taxid_count} records have no taxid and will use a default taxid for tree building.")
+    
+    # Use a default taxid (1 = root) for records without taxid
+    DEFAULT_TAXID = 1
+    valid = valid.with_columns(
+        pl.col("taxid").fill_null(DEFAULT_TAXID).alias("taxid")
+    )
+
+    taxids = valid.select("taxid").unique().to_series().to_list()
     distances = calculate_taxid_distances(taxids, update_db=False)
     mat = np.zeros((n, n), dtype=float)
     for a in range(n):
@@ -736,6 +765,17 @@ def ani_tree(
 
 
 def _make_foldmason_tree(records, all_prot, output_dir, threads):
+    """Build tree using FoldMason structural alignment.
+    
+    Uses AlphaFold structures for proteins that can be mapped to UniProt IDs.
+    Proteins without structures are added via MAFFT --add.
+    
+    Priority for UniProt ID resolution:
+    1. Use existing uniprot_id from input (preserved from inputsheet)
+    2. Map NCBI protein_id → UniProt using ProtMapper
+    """
+    from hoodini.utils.logging_utils import info, warn
+    
     # Normalize inputs to Polars for consistency through the pipeline
     records = records.collect() if isinstance(records, pl.LazyFrame) else records
     records = records if isinstance(records, pl.DataFrame) else pl.from_pandas(records)
@@ -743,15 +783,62 @@ def _make_foldmason_tree(records, all_prot, output_dir, threads):
     all_prot_pl = all_prot_pl if isinstance(all_prot_pl, pl.DataFrame) else pl.from_pandas(all_prot)
 
     valid = records.filter(pl.col("failed").is_null())
+    
+    # Build protein_id -> uniprot_id mapping
+    # Priority 1: Use existing uniprot_id from records (from original input)
+    has_uniprot = "uniprot_id" in valid.columns
+    existing_uniprot = {}
+    if has_uniprot:
+        uniprot_rows = valid.filter(
+            pl.col("uniprot_id").is_not_null() & (pl.col("uniprot_id") != "")
+        ).select(["protein_id", "uniprot_id"]).unique()
+        for row in uniprot_rows.iter_rows(named=True):
+            if row["protein_id"] and row["uniprot_id"]:
+                existing_uniprot[row["protein_id"]] = row["uniprot_id"]
+    
+    info(f"Found {len(existing_uniprot)} proteins with existing UniProt IDs from input")
+    
+    # Get all target protein IDs
     targets = valid.select("protein_id").drop_nulls().unique().to_series().to_list()
-
+    
+    # Priority 2: Map remaining proteins without uniprot_id
+    needs_mapping = [t for t in targets if t not in existing_uniprot]
+    
     import pandas as pd
-
-    mapper = ProtMapper()
-    mapped_pd, no_map = mapper.get(ids=targets, from_db="EMBL-GenBank-DDBJ_CDS", to_db="UniProtKB")
-
-    # Check if ALL IDs failed to map - if so, we can't build a foldmason tree
-    if set(no_map) == set(targets):
+    
+    mapped_from_api = {}
+    no_map = []
+    
+    if needs_mapping:
+        info(f"Mapping {len(needs_mapping)} proteins to UniProt via API...")
+        mapper = ProtMapper()
+        try:
+            mapped_pd, failed_ids = mapper.get(
+                ids=needs_mapping, from_db="EMBL-GenBank-DDBJ_CDS", to_db="UniProtKB"
+            )
+            no_map = failed_ids if failed_ids else []
+            
+            if mapped_pd is not None and not mapped_pd.empty:
+                for _, row in mapped_pd.iterrows():
+                    mapped_from_api[row["From"]] = row["Entry"]
+        except Exception as e:
+            warn(f"UniProt mapping failed: {e}")
+            no_map = needs_mapping
+    
+    # Combine mappings (existing takes priority)
+    protein_to_uniprot = {**mapped_from_api, **existing_uniprot}  # existing overwrites
+    
+    # Proteins that have UniProt IDs (either from input or mapped)
+    proteins_with_uniprot = [t for t in targets if t in protein_to_uniprot]
+    uniprot_ids = [protein_to_uniprot[t] for t in proteins_with_uniprot]
+    
+    # Proteins without UniProt mapping
+    no_uniprot = [t for t in targets if t not in protein_to_uniprot]
+    
+    info(f"Proteins with UniProt: {len(proteins_with_uniprot)}, without: {len(no_uniprot)}")
+    
+    # Check if we have any UniProt IDs to work with
+    if not uniprot_ids:
         console.print(
             "[bold red]Error: None of the protein IDs could be mapped to UniProt IDs.[/bold red]"
         )
@@ -763,44 +850,53 @@ def _make_foldmason_tree(records, all_prot, output_dir, threads):
         )
         return _make_tree(records, all_prot, output_dir, threads)
 
-    mapped_pd = mapped_pd if mapped_pd is not None else pd.DataFrame()
-    mapped_pl = (
-        pl.from_pandas(mapped_pd)
-        if mapped_pd is not None and not mapped_pd.empty
-        else pl.DataFrame()
-    )
-
+    # Fetch AlphaFold structures
     fetcher = AlphaFetcher(base_savedir=f"{output_dir}/struct")
-    entries = mapped_pd["Entry"].unique().tolist() if not mapped_pd.empty else []
-    if entries:
-        fetcher.add_proteins(entries)
-        fetcher.fetch_metadata(multithread=True, workers=threads)
-    else:
-        fetcher.failed_ids = []
-
-    no_pdb = (
-        mapped_pd[mapped_pd["Entry"].isin(fetcher.failed_ids)]["From"].unique().tolist()
-        if not mapped_pd.empty
-        else []
-    )
-    no_pdb.extend(no_map)
-    if entries:
+    unique_uniprot = list(set(uniprot_ids))
+    
+    info(f"Fetching AlphaFold structures for {len(unique_uniprot)} UniProt IDs...")
+    fetcher.add_proteins(unique_uniprot)
+    fetcher.fetch_metadata(multithread=True, workers=threads)
+    
+    # Track which proteins don't have PDB structures
+    failed_uniprot = set(fetcher.failed_ids) if fetcher.failed_ids else set()
+    no_pdb_proteins = [t for t in targets if protein_to_uniprot.get(t) in failed_uniprot]
+    no_pdb_proteins.extend(no_uniprot)
+    
+    # Download structures for successful ones
+    successful_uniprot = [u for u in unique_uniprot if u not in failed_uniprot]
+    if successful_uniprot:
+        info(f"Downloading {len(successful_uniprot)} PDB structures...")
         fetcher.download_all_files(pdb=True, cif=False, multithread=True, workers=threads)
 
-    subprocess.run(
-        [
-            "foldmason",
-            "easy-msa",
-            f"{output_dir}/struct/pdb_files",
-            f"{output_dir}/foldmason",
-            f"{output_dir}/temp",
-        ],
-        check=True,
-    )
+    # Check if foldmason is available
+    import shutil
+    if shutil.which("foldmason") is None:
+        warn("foldmason not found in PATH. Falling back to FAMSA + VeryFastTree.")
+        return _make_tree(records, all_prot, output_dir, threads)
 
-    if no_pdb:
+    # Run foldmason
+    info("Running FoldMason structural alignment...")
+    try:
+        subprocess.run(
+            [
+                "foldmason",
+                "easy-msa",
+                f"{output_dir}/struct/pdb_files",
+                f"{output_dir}/foldmason",
+                f"{output_dir}/temp",
+            ],
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        warn(f"FoldMason failed: {e}. Falling back to FAMSA + VeryFastTree.")
+        return _make_tree(records, all_prot, output_dir, threads)
+
+    # Handle proteins without PDB structures (add via MAFFT)
+    if no_pdb_proteins:
+        info(f"Adding {len(no_pdb_proteins)} proteins without structures via MAFFT...")
         missing_df = (
-            all_prot_pl.filter(pl.col("id").is_in(no_pdb))
+            all_prot_pl.filter(pl.col("id").is_in(no_pdb_proteins))
             .select(["id", "sequence"])
             .unique(subset=["id"])
         )
@@ -821,17 +917,34 @@ def _make_foldmason_tree(records, all_prot, output_dir, threads):
     else:
         os.rename(f"{output_dir}/foldmason_aa.fa", f"{output_dir}/target_prots.aln")
 
+    # Build mapping: UniProt ID -> protein_id -> unique_id
+    # The alignment has UniProt IDs (from foldmason) or protein IDs (from mafft --add)
+    uniprot_to_protein = {v: k for k, v in protein_to_uniprot.items()}
+    
+    # Build protein_id -> unique_id mapping from records
+    protein_to_uid = {}
+    for row in valid.select(["protein_id", "unique_id"]).drop_nulls().unique().iter_rows(named=True):
+        if row["protein_id"] and row["unique_id"]:
+            protein_to_uid[row["protein_id"]] = str(row["unique_id"])
+    
     aln_df = read_fasta(f"{output_dir}/target_prots.aln")
-    mapped_join = (
-        mapped_pl.select([pl.col("From").cast(pl.Utf8), pl.col("Entry").cast(pl.Utf8)])
-        if not mapped_pl.is_empty()
-        else pl.DataFrame({"From": [], "Entry": []}, schema={"From": pl.Utf8, "Entry": pl.Utf8})
+    
+    # Map alignment IDs to unique_id:
+    # 1. UniProt ID -> protein_id -> unique_id
+    # 2. protein_id -> unique_id (if already a protein_id)
+    def map_to_uid(x):
+        # First try as UniProt -> protein_id
+        prot_id = uniprot_to_protein.get(x, x)
+        # Then protein_id -> unique_id
+        return protein_to_uid.get(prot_id, prot_id)
+    
+    aln_df = aln_df.with_columns(
+        pl.col("id").map_elements(map_to_uid, return_dtype=pl.Utf8).alias("unique_id")
     )
-    aln_df = aln_df.join(mapped_join, left_on="id", right_on="Entry", how="left").drop("Entry")
-    aln_df = aln_df.with_columns(pl.col("From").fill_null(pl.col("id")))
-    aln_df = aln_df.unique(subset=["From"])
-    aln_df.to_fasta("From", "sequence", f"{output_dir}/target_prots.aln")
+    aln_df = aln_df.unique(subset=["unique_id"])
+    aln_df.to_fasta("unique_id", "sequence", f"{output_dir}/target_prots.aln")
 
+    info("Building tree with VeryFastTree...")
     result = subprocess.run(
         ["VeryFastTree", f"{output_dir}/target_prots.aln"], capture_output=True, text=True
     )

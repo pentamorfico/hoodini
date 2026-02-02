@@ -453,6 +453,7 @@ def extract_neighborhood(
     unique_id: str | None = None,
     input_type: str | None = None,
     sorfs: bool = False,
+    is_full_contig: bool = False,
 ) -> tuple[pl.DataFrame | None, pl.DataFrame | None, str, str | None]:
     """Extract neighborhood from GBFF or GFF+FAA. Returns (proteins_df, neighborhood_df, unique_id, error_msg).
 
@@ -487,6 +488,9 @@ def extract_neighborhood(
             raise NeighborhoodExtractionError(
                 "Must provide either gbf_file or (gff_file and faa_file)"
             )
+
+        # is_full_contig is now passed as a parameter from the pipeline
+        # (set in parse_ipg.py when start/end were null for nucleotide inputs)
 
         start_win, end_win, strand, start_target, end_target = compute_window(
             features_df,
@@ -532,6 +536,7 @@ def extract_neighborhood(
                 "strand_win": [strand],
                 "sequence": [window_sequence],
                 "unique_id": [unique_id or "unknown"],
+                "is_full_contig": [is_full_contig],
             }
         )
 

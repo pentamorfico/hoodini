@@ -31,6 +31,7 @@ def categorize_id(id_: str) -> dict[str, str | None]:
         r"(?:[A-Z][A-Z0-9]{2}[0-9])?)$"
     )
     nucleotide_patterns = [
+        # RefSeq nucleotide IDs: NC_000913.3, NZ_CP012345.1, etc.
         re.compile(
             r"^("
             + "|".join(
@@ -53,9 +54,11 @@ def categorize_id(id_: str) -> dict[str, str | None]:
                     "KX",
                 ]
             )
-            + r")(_[A-Z]+\d+|\d+)(\.\d+)?(:\d+-\d+)?$"
+            + r")_([A-Z]*\d+)(\.\d+)?(:\d+-\d+)?$"
         ),
+        # GenBank nucleotide: 1-2 letters + 5-8 digits (e.g., U12345, AB123456)
         re.compile(r"^[A-Z]{1,2}\d{5,8}(\.\d+)?$"),
+        # WGS/TSA contigs: 4-6 letters + 8+ digits (e.g., JABC01000001)
         re.compile(r"^[A-Z]{4,6}\d{8,}(\.\d+)?$"),
     ]
     protein_patterns = [

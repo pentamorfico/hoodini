@@ -11,6 +11,8 @@ This page describes the files and folders produced by Hoodini and how to interpr
 
 ## Output Directory Structure
 
+By default, temporary files are cleaned up after the pipeline completes. Use `--keep` to preserve all intermediate files.
+
 <FileTree>
   <FileTree.Folder name="output_dir" defaultOpen>
     <FileTree.Folder name="hoodini-viz" defaultOpen>
@@ -30,37 +32,40 @@ This page describes the files and folders produced by Hoodini and how to interpr
         <FileTree.File name="tree_metadata.txt" />
       </FileTree.Folder>
       <FileTree.File name="tree.nwk" />
-      <FileTree.File name="hoodini-viz.html" />
-    </FileTree.Folder>
-    <FileTree.Folder name="assembly_folder">
-      <FileTree.File name="GCA_000001234.1/" />
-      <FileTree.File name="GCA_000005678.1/" />
+      <FileTree.File name="*.html" />
     </FileTree.Folder>
     <FileTree.Folder name="neighborhood">
       <FileTree.File name="neighborhoods.fasta" />
     </FileTree.Folder>
-    <FileTree.Folder name="cctyper">
+    <FileTree.Folder name="cctyper (if --cctyper)">
       <FileTree.File name="crispr_arrays.tsv" />
       <FileTree.File name="cas_operons.tsv" />
     </FileTree.Folder>
-    <FileTree.Folder name="ncrna">
-      <FileTree.File name="infernal_results.tblout" />
+    <FileTree.Folder name="ncrna (if --ncrna)">
+      <FileTree.File name="ncrna_results.tsv" />
     </FileTree.Folder>
-    <FileTree.Folder name="genomad">
-      <FileTree.File name="virus_summary.tsv" />
-      <FileTree.File name="plasmid_summary.tsv" />
+    <FileTree.Folder name="genomad (if --genomad)">
+      <FileTree.File name="output/*_summary/" />
     </FileTree.Folder>
-    <FileTree.File name="assembly_list.txt" />
-    <FileTree.File name="all_neigh.tsv" />
-    <FileTree.File name="records.csv" />
-    <FileTree.File name="tree.nwk" />
-    <FileTree.File name="pairwise_aa.tsv" />
-    <FileTree.File name="nt_links.tsv" />
-    <FileTree.File name="aai_matrix.tsv" />
-    <FileTree.File name="ani_matrix.tsv" />
-    <FileTree.File name="domains.tsv" />
+    <FileTree.Folder name="padloc (if --padloc)">
+      <FileTree.File name="*_padloc.csv" />
+      <FileTree.File name="*_padloc.gff" />
+    </FileTree.Folder>
+    <FileTree.Folder name="defense_finder (if --deffinder)">
+      <FileTree.File name="*_genes.tsv" />
+      <FileTree.File name="*_systems.tsv" />
+    </FileTree.Folder>
+    <FileTree.File name="records.tsv" />
+    <FileTree.File name="target_prots.fasta" />
+    <FileTree.File name="target_prots.aln (if MSA generated)" />
+    <FileTree.File name="aai.tsv (if --aai-mode)" />
+    <FileTree.File name="pairwise_ani_*.tsv (if --nt-links)" />
   </FileTree.Folder>
 </FileTree>
+
+<Callout type="info" emoji="💡">
+  With `--keep`, additional directories are preserved: `assembly_folder/` (downloaded genomes), `tmp_mmseqs/` (clustering intermediates), `all_neigh.tsv`, and other temp files.
+</Callout>
 
 ---
 
@@ -70,20 +75,19 @@ These files are **always** produced:
 
 | Path | Description |
 |------|-------------|
-| `assembly_list.txt` | Assembly accessions selected for processing |
-| `all_neigh.tsv` | Neighborhood coordinates and identifiers for each target |
-| `records.csv` | Input records enriched with taxonomy and metadata |
+| `records.tsv` | Input records enriched with taxonomy and metadata |
 | `neighborhood/neighborhoods.fasta` | Extracted neighborhood nucleotide sequences |
+| `hoodini-viz/` | Interactive visualization with tree, GFF, and metadata |
 
 <Callout type="info">
-  The `records.csv` file contains your original input columns plus all metadata added during the pipeline, including taxonomy, assembly info, and any custom columns you provided.
+  The `records.tsv` file contains your original input columns plus all metadata added during the pipeline, including taxonomy, assembly info, and any custom columns you provided.
 </Callout>
 
 ---
 
-## Assembly Folder
+## Assembly Folder (with --keep)
 
-Downloaded genome files (when not using local assemblies):
+Downloaded genome files are preserved only when using `--keep`:
 
 <FileTree>
   <FileTree.Folder name="assembly_folder" defaultOpen>
@@ -243,9 +247,9 @@ Efficient binary format used by the viewer:
 | File | Contents |
 |------|----------|
 | `gff.parquet` | Gene annotations for all neighborhoods |
-| `hoods.parquet` | Neighborhood metadata and sequences |
+| `hoods.parquet` | Neighborhood metadata and coordinates + custom columns |
 | `protein_metadata.parquet` | Protein info including clusters and domains |
-| `tree_metadata.parquet` | Tree leaf metadata (taxonomy, custom columns) |
+| `tree_metadata.parquet` | Tree leaf metadata (taxonomy + custom columns) |
 | `domains.parquet` | Domain annotations (if `--domains` used) |
 | `nucleotide_links.parquet` | Synteny links (if `--nt-links` used) |
 | `protein_links.parquet` | Protein similarity links (if `--prot-links` used) |
@@ -257,9 +261,13 @@ Human-readable versions for inspection:
 | File | Contents |
 |------|----------|
 | `gff.gff` | Standard GFF3 format annotations |
-| `hoods.txt` | Neighborhood coordinates |
+| `hoods.txt` | Neighborhood coordinates + custom columns |
 | `protein_metadata.txt` | Protein annotations |
-| `tree_metadata.txt` | Leaf metadata |
+| `tree_metadata.txt` | Leaf metadata (taxonomy + custom columns) |
+
+<Callout type="info" emoji="📊">
+  **Custom columns**: If you used an inputsheet with extra columns (e.g., `sample_name`, `condition`, `host`), these appear in both `hoods.txt`/`hoods.parquet` and `tree_metadata.txt`/`tree_metadata.parquet`. See [Input Formats](/input-formats#custom-columns-extra-metadata) for details.
+</Callout>
 
 ### Viewer HTML
 

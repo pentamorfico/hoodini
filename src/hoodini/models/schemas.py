@@ -92,6 +92,7 @@ RECORDS = TableSchema(
         "taxid": pl.Int64,
         "assembly_id": pl.Utf8,
         "premade": pl.Boolean,
+        "is_full_contig": pl.Boolean,
         # DSMZ BacDive/PhageDive columns
         "dive_id": pl.Utf8,
         "collection_id": pl.Utf8,
@@ -127,6 +128,8 @@ NEIGHBORHOODS = TableSchema(
         "end_target": pl.Int64,
         "target_prot": pl.Utf8,
         "temp_seqid": pl.Utf8,
+        "strand_win": pl.Utf8,
+        "is_full_contig": pl.Boolean,
     },
 )
 

@@ -213,8 +213,8 @@ def _compute_subset_protein_ids(
             )
             if contained.is_empty():
                 return set()
-            min_idx = int(contained.select(pl.col("gene_idx").min()).to_series().iloc[0])
-            max_idx = int(contained.select(pl.col("gene_idx").max()).to_series().iloc[0])
+            min_idx = int(contained.select(pl.col("gene_idx").min()).item())
+            max_idx = int(contained.select(pl.col("gene_idx").max()).item())
             start_idx = max(0, min_idx - w)
             end_idx = max_idx + w
             sel = gff.filter((pl.col("gene_idx") >= start_idx) & (pl.col("gene_idx") <= end_idx))

@@ -82,7 +82,7 @@ def run_defensefinder(all_gff, all_prots, output):
                             return gene_name.split("_")[0]
                         else:
                             parts = gene_name.split("__")
-                            return parts[1] if len(parts) > 1 else ""
+                            return parts[1] if len(parts) > 1 else gene_name
                     except (IndexError, AttributeError):
                         return ""
 

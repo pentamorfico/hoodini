@@ -458,8 +458,11 @@ def _skani_like_from_mappy(
         return selected
 
     out = []
-    for (q_id, t_id), g in df.groupby(["query_id", "target_id"], sort=False):
-        hits = g.to_dict("records")
+    # Use polars partition_by for grouping (returns dict of group_key -> DataFrame)
+    for group_df in df.partition_by(["query_id", "target_id"], maintain_order=True):
+        q_id = group_df["query_id"][0]
+        t_id = group_df["target_id"][0]
+        hits = group_df.to_dicts()
         sel_idx = _select_non_overlapping(hits, on=overlap_on, tol=overlap_tol)
         sel = [hits[i] for i in sel_idx]
 
@@ -491,12 +494,12 @@ def _skani_like_from_mappy(
         q_ivs = [
             _norm_iv(h["q_st"], h["q_en"])
             for h in sel
-            if pl.notna(h.get("q_st")) and pl.notna(h.get("q_en"))
+            if not _is_na(h.get("q_st")) and not _is_na(h.get("q_en"))
         ]
         t_ivs = [
             _norm_iv(h["r_st"], h["r_en"])
             for h in sel
-            if pl.notna(h.get("r_st")) and pl.notna(h.get("r_en"))
+            if not _is_na(h.get("r_st")) and not _is_na(h.get("r_en"))
         ]
         covered_q = _merge_coverage_len(q_ivs)
         covered_t = _merge_coverage_len(t_ivs)
@@ -519,9 +522,7 @@ def _skani_like_from_mappy(
             }
         )
 
-    return pl.DataFrame(
-        out, columns=["Ref_name", "Query_name", "ANI", "Align_fraction_ref", "Align_fraction_query"]
-    )
+    return pl.DataFrame(out)
 
 
 def run_pairwise_nt(

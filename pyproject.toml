@@ -43,6 +43,9 @@ dependencies = [
 dev = [
 	"pytest>=7.4.0",
 	"pytest-cov>=4.1.0",
+	"pytest-xdist>=3.5.0",
+	"pytest-randomly>=3.15.0",
+	"hypothesis>=6.100.0",
 	"black==24.10.0",
 	"ruff>=0.1.0",
 	"isort>=5.12.0",
@@ -135,10 +138,16 @@ pretty = true
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-ra -q"
+addopts = "-ra -q --strict-markers"
 testpaths = ["tests"]
 pythonpath = ["src"]
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests requiring network",
+    "unit: marks tests as fast unit tests",
+    "requires_db: marks tests requiring external databases (PADLOC, DefenseFinder)",
+]
 
 [tool.pixi.workspace]
 channels = ["conda-forge", "bioconda"]

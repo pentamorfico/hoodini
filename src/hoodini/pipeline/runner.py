@@ -7,14 +7,155 @@ that accepts a typed RuntimeConfig.
 from __future__ import annotations
 
 import logging
+import shutil
+from pathlib import Path
 
 import polars as pl
 
 from hoodini.config import RuntimeConfig
-from hoodini.utils.logging_utils import stage_done, stage_header
+from hoodini.utils.logging_utils import info, stage_done, stage_header
 from hoodini.utils.memory_utils import reset_tracker
 
 log = logging.getLogger(__name__)
+
+
+def cleanup_temp_files(output_dir: Path, keep: bool = False) -> None:
+    """Remove temporary files after pipeline completes.
+    
+    Cleanup strategy:
+    -----------------
+    ALWAYS KEPT (essential outputs):
+    - records.tsv (input/output mapping)
+    - hoodini-viz/ (visualization data: html, tree.nwk, tsv/, parquet/)
+    - neighborhood/neighborhoods.fasta (nucleotide sequences)
+    - target_prots.fasta (target protein sequences)
+    - target_prots.aln (MSA if generated)
+    - distance_matrix.csv (if generated)
+    - aai.tsv, pairwise_ani_*.tsv (similarity matrices)
+    - Extra tool results: padloc/*.csv, defense_finder/*_genes.tsv, etc.
+    
+    REMOVED when keep=False:
+    - assembly_folder/ (raw GenBank files, ~5-10MB per assembly)
+    - tmp*/ folders (MMseqs2, BLAST, etc.)
+    - ani_split/, fastani_pairwise_visual/ (intermediate ANI files)
+    - struct/, temp/ (Foldseek intermediates)
+    - *.log files
+    - Intermediate FASTA files (proteome.fasta, temp.fasta, etc.)
+    
+    Args:
+        output_dir: Output directory path
+        keep: If True, skip cleanup (for debugging)
+    """
+    if keep:
+        info("🗂️\tKeeping temporary files (--keep flag)")
+        return
+    
+    info("🧹\tCleaning up temporary files...")
+    
+    # =========================================================================
+    # 1. Root level temp FILES to remove
+    # =========================================================================
+    root_temp_files = [
+        "temp.fasta",
+        "temp.gff",
+        "proteome.fasta",          # DefenseFinder temp
+        "proteome.fasta.idx",      # DefenseFinder temp
+        "results.fasta",           # Intermediate FASTA
+        "assembly_list.txt",       # Assembly list (info already in records)
+        "all_neigh.tsv",           # Neighborhood data (already in hoodini-viz)
+        "tree.nwk",                # Tree (already in hoodini-viz)
+        "wgrr.tsv",                # WGRR data (already in hoodini-viz)
+        "intergenic.fasta",        # Intergenic regions temp
+        "deepmmseqs_results.tsv",  # MMseqs intermediate (clusters in hoodini-viz)
+        "fastani_genome_list.txt", # FastANI temp
+        "fastani_output.tsv",      # FastANI raw output
+        "fastani_all.log",         # FastANI log
+        "foldmason.nw",            # Foldmason intermediate tree
+        "foldmason_3di.fa",        # Foldmason 3Di MSA
+    ]
+    for fname in root_temp_files:
+        fpath = output_dir / fname
+        if fpath.exists():
+            fpath.unlink()
+    
+    # =========================================================================
+    # 2. Root level temp DIRECTORIES to remove entirely
+    # =========================================================================
+    root_temp_dirs = [
+        "tmp",                     # General temp folder
+        "tmp_mmseqs",              # MMseqs2 temp
+        "ani_split",               # FastANI split FASTAs
+        "fastani_pairwise_visual", # FastANI visualization files
+        "struct",                  # Foldseek structure files
+        "temp",                    # Foldseek temp
+        "assembly_folder",         # Raw GenBank files (biggest cleanup!)
+    ]
+    for dirname in root_temp_dirs:
+        dir_path = output_dir / dirname
+        if dir_path.exists() and dir_path.is_dir():
+            shutil.rmtree(dir_path)
+    
+    # =========================================================================
+    # 3. PADLOC: keep csv and gff, remove domtblout and other temps
+    # =========================================================================
+    padloc_dir = output_dir / "padloc"
+    if padloc_dir.exists():
+        for fpath in padloc_dir.glob("*.domtblout"):
+            fpath.unlink()
+        for fpath in padloc_dir.glob("*.log"):
+            fpath.unlink()
+    
+    # =========================================================================
+    # 4. DefenseFinder: keep *_genes.tsv and *_systems.tsv, remove hmmer
+    # =========================================================================
+    deffinder_dir = output_dir / "defense_finder"
+    if deffinder_dir.exists():
+        for fpath in deffinder_dir.glob("*_hmmer.tsv"):
+            fpath.unlink()
+        for fpath in deffinder_dir.glob("*.log"):
+            fpath.unlink()
+    
+    # =========================================================================
+    # 5. geNomad: keep only *_summary folders
+    # =========================================================================
+    genomad_output = output_dir / "genomad" / "output"
+    if genomad_output.exists():
+        # Remove all log files
+        for fpath in genomad_output.glob("*.log"):
+            fpath.unlink()
+        # Remove intermediate folders (keep only *_summary)
+        for subdir in genomad_output.iterdir():
+            if subdir.is_dir() and not subdir.name.endswith("_summary"):
+                shutil.rmtree(subdir)
+    
+    # =========================================================================
+    # 6. CCTyper: keep essential outputs, remove BLAST db files
+    # =========================================================================
+    cctyper_dir = output_dir / "cctyper"
+    if cctyper_dir.exists():
+        # Remove BLAST database files
+        blast_exts = [".ndb", ".njs", ".not", ".ntf", ".nto", ".nhr", ".nin", ".nsq"]
+        for ext in blast_exts:
+            for fpath in cctyper_dir.glob(f"*{ext}"):
+                fpath.unlink()
+        # Remove spacers folder (usually large)
+        spacers_dir = cctyper_dir / "spacers"
+        if spacers_dir.exists() and spacers_dir.is_dir():
+            shutil.rmtree(spacers_dir)
+    
+    # =========================================================================
+    # 7. Remove any remaining .log files in root
+    # =========================================================================
+    for fpath in output_dir.glob("*.log"):
+        fpath.unlink()
+    
+    # =========================================================================
+    # 8. Remove BLAST temp databases in root tmp/ if it recreates
+    # =========================================================================
+    for fpath in output_dir.glob("blastdb*"):
+        fpath.unlink()
+    
+    info("✅\tCleanup complete")
 
 
 def run_pipeline(config: RuntimeConfig) -> None:
@@ -74,7 +215,6 @@ def run_pipeline(config: RuntimeConfig) -> None:
         Expects: records, all_gff, all_neigh, all_prots DataFrames
         Generates:
         - {output}/tree.nwk
-        - {output}/records.csv
         Returns: tree_str, den_data DataFrame
 
     9. EXTRA ANNOTATIONS (optional tools)
@@ -434,9 +574,14 @@ def _run_pipeline_stages(config: RuntimeConfig, tracker) -> None:
             all_prots=all_prots,
             den_data=den_data,
             tree_str=tree_str,
+            records=records,
+            valid_uids=valid_uids,
             nt_links=nt_links,
             pairwise_aa=pairwise_aa,
             domains_data=domains_data,
             write_domains=bool(config.domains),
             ncrna_data=ncrna_data,
         )
+
+    # Cleanup temporary files
+    cleanup_temp_files(Path(config.output), keep=config.keep)

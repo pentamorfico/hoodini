@@ -12,6 +12,48 @@ import rich_click as click
 from hoodini.utils.id_parsing import categorize_id
 from hoodini.utils.logging_utils import warn
 
+# Reserved columns used internally by the pipeline - these should not be overwritten by user data
+RESERVED_COLUMNS = {
+    # Input identification
+    "og_index",
+    "unique_id",
+    "protein_id",
+    "nucleotide_id",
+    "uniprot_id",
+    "input_type",
+    # Paths
+    "gff_path",
+    "faa_path",
+    "fna_path",
+    "gbf_path",
+    # Coordinates
+    "start",
+    "end",
+    "strand",
+    # Assembly/taxonomy
+    "taxid",
+    "assembly_id",
+    # Status
+    "failed",
+    "failed_reason",
+    "premade",
+    "is_full_contig",
+    # Query info (added by pipeline)
+    "query_protein_id",
+    "is_refseq_query",
+    "sequence_length",
+    "group",
+    "species_taxid",
+    "organism_name",
+    "infraspecific_name",
+    "assembly_level",
+    "nucleotide_id_no_prefix",
+    # DSMZ dive columns
+    "dive_id",
+    "collection_id",
+    "dive_type",
+}
+
 
 def validate_literal_id(query: str) -> None:
     """
@@ -69,7 +111,8 @@ def validate_input_file(ctx, param, value):
                             "File must be a single-column text file without delimiters like commas or tabs."
                         )
 
-                special_char_pattern = re.compile(r"[^A-Za-z0-9\s._]+")
+                # Allow alphanumeric, dots, underscores, colons and hyphens for NucID:start-end format
+                special_char_pattern = re.compile(r"[^A-Za-z0-9\s._:\-]+")
                 for i, line in enumerate(lines):
                     match = special_char_pattern.search(line)
                     if match:
@@ -84,26 +127,57 @@ def validate_input_file(ctx, param, value):
                     raise click.BadParameter("The file is not in TSV format.")
                 file.seek(0)
                 reader = csv.DictReader(file, delimiter=delimiter)
-                required_columns = [
-                    "nucleotide_id",
-                    "protein_id",
-                    "gff_path",
-                    "fna_path",
-                    "faa_path",
-                ]
-                if not all(col in reader.fieldnames for col in required_columns):
+                fieldnames = reader.fieldnames or []
+                
+                # Check for at least one ID column
+                id_columns = ["nucleotide_id", "protein_id", "uniprot_id"]
+                has_id_col = any(col in fieldnames for col in id_columns)
+                if not has_id_col:
                     raise click.BadParameter(
-                        "TSV file must contain columns: nucleotide_id, protein_id, gff_path, fna_path, faa_path"
+                        "TSV file must contain at least one ID column: nucleotide_id, protein_id, or uniprot_id"
                     )
 
+                # Check for local file columns
+                has_gbf_col = "gbf_path" in fieldnames
+                has_gff_faa_cols = "gff_path" in fieldnames and "faa_path" in fieldnames
+
                 found_valid_row = False
-                for row in reader:
-                    if row["nucleotide_id"].strip() or row["protein_id"].strip():
-                        found_valid_row = True
-                        break
+                invalid_ids = []
+                
+                for row_num, row in enumerate(reader, start=2):  # start=2 because header is row 1
+                    # Check if row has local files
+                    has_local_gbf = has_gbf_col and row.get("gbf_path", "").strip()
+                    has_local_gff_faa = (
+                        has_gff_faa_cols 
+                        and row.get("gff_path", "").strip() 
+                        and row.get("faa_path", "").strip()
+                    )
+                    has_local_files = has_local_gbf or has_local_gff_faa
+                    
+                    # Get the ID value from any ID column
+                    id_value = None
+                    for col in id_columns:
+                        if col in row and row[col] and row[col].strip():
+                            id_value = row[col].strip()
+                            found_valid_row = True
+                            break
+                    
+                    # If no local files, validate the ID format
+                    if id_value and not has_local_files:
+                        result = categorize_id(id_value)
+                        if result["type"] == "unmatched":
+                            invalid_ids.append(f"Row {row_num}: '{id_value}'")
+                
                 if not found_valid_row:
                     raise click.BadParameter(
-                        "The TSV file must contain at least one valid row with required data."
+                        "The TSV file must contain at least one valid row with an ID value."
+                    )
+                
+                if invalid_ids:
+                    raise click.BadParameter(
+                        f"Invalid ID format(s) without local files - must be valid NCBI or UniProt ID:\n  " 
+                        + "\n  ".join(invalid_ids[:5])
+                        + (f"\n  ... and {len(invalid_ids) - 5} more" if len(invalid_ids) > 5 else "")
                     )
 
     except Exception as e:
@@ -205,9 +279,12 @@ def is_refseq_nuccore(nuc_id):
 
 
 def read_input_sheet(filename):
-    df = pl.read_csv(filename, separator="\t", dtype=str)
-    df = df.with_row_count("og_index").with_columns(pl.col("og_index").cast(pl.Utf8))
+    df = pl.read_csv(filename, separator="\t", infer_schema_length=0)
+    df = df.with_row_index("og_index").with_columns(pl.col("og_index").cast(pl.Utf8))
 
+    # Identify user-provided extra columns (not in reserved set)
+    user_extra_columns = [col for col in df.columns if col not in RESERVED_COLUMNS]
+    
     expected_columns = [
         "protein_id",
         "nucleotide_id",
@@ -219,12 +296,37 @@ def read_input_sheet(filename):
         "taxid",
         "assembly_id",
         "failed",
+        "failed_reason",
         "input_type",
         "premade",
+        "start",
+        "end",
+        "strand",
     ]
     for col in expected_columns:
         if col not in df.columns:
             df = df.with_columns(pl.lit(None).alias(col))
+    
+    # Determine input_type if not explicitly set
+    # Priority: nucleotide_id > protein_id > uniprot_id
+    df = df.with_columns(
+        pl.when(pl.col("input_type").is_not_null() & (pl.col("input_type") != ""))
+        .then(pl.col("input_type"))
+        .when(pl.col("nucleotide_id").is_not_null() & (pl.col("nucleotide_id") != ""))
+        .then(pl.lit("nucleotide"))
+        .when(pl.col("protein_id").is_not_null() & (pl.col("protein_id") != ""))
+        .then(pl.lit("protein"))
+        .when(pl.col("uniprot_id").is_not_null() & (pl.col("uniprot_id") != ""))
+        .then(pl.lit("protein"))
+        .otherwise(pl.lit(None))
+        .alias("input_type")
+    )
+    
+    # Store user extra columns as metadata for downstream propagation
+    if user_extra_columns:
+        # Add a hidden attribute to track extra columns (will be used by write_data)
+        df = df.with_columns(pl.lit(",".join(user_extra_columns)).alias("_user_extra_cols"))
+    
     return df
 
 
@@ -261,8 +363,27 @@ def read_input_list(filename):
             record["input_type"] = "protein"
         elif category["type"] == "nucleotide":
             record["nucleotide_id"] = category["id"]
-            record["protein_id"] = category.get("protein_id")
             record["input_type"] = "nucleotide"
+            
+            # Check if this is a NucID:start-end format
+            # categorize_id puts the "start-end" part in protein_id when it sees ":"
+            potential_range = category.get("protein_id")
+            if potential_range and "-" in potential_range:
+                parts = potential_range.split("-")
+                if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                    record["start"] = int(parts[0])
+                    record["end"] = int(parts[1])
+                    if record["start"] > record["end"]:
+                        record["start"], record["end"] = record["end"], record["start"]
+                        record["strand"] = "-"
+                    else:
+                        record["strand"] = "+"
+                    record["protein_id"] = None  # Clear the misinterpreted protein_id
+                else:
+                    record["protein_id"] = potential_range
+            else:
+                record["protein_id"] = potential_range
+                
         elif category["type"] == "uniprot":
             record["uniprot_id"] = category["id"]
             record["input_type"] = "protein"
@@ -270,32 +391,14 @@ def read_input_list(filename):
             record["failed"] = True
             record["failed_reason"] = "not valid ID"
         else:
-            if ":" in id_:
-                category = categorize_id(id_.split(":")[0])
-                if category["type"] == "nucleotide":
-                    if (
-                        "-" in id_.split(":")[1]
-                        and id_.split(":")[1].split("-")[0].isdigit()
-                        and id_.split(":")[1].split("-")[1].isdigit()
-                    ):
-                        record["nucleotide_id"] = id_.split(":")[0]
-                        record["start"] = id_.split(":")[1].split("-")[0]
-                        record["end"] = id_.split(":")[1].split("-")[1]
-                        if record["start"] > record["end"]:
-                            record["start"], record["end"] = record["end"], record["start"]
-                            record["strand"] = "-"
-                        else:
-                            record["strand"] = "+"
-                        record["input_type"] = "nucleotide"
-                    else:
-                        record["failed"] = True
-                        record["failed_reason"] = "not valid ID"
-                    record["nucleotide_id"] = category["id"]
-                    record["input_type"] = "nucleotide"
-
-            if record["protein_id"] is None and category.get("id"):
+            # Fallback for unknown types
+            if category.get("id"):
                 record["protein_id"] = category["id"]
-                record["input_type"] = record.get("input_type") or "protein"
+                record["input_type"] = "protein"
+            else:
+                record["failed"] = True
+                record["failed_reason"] = "not valid ID"
+                
         data.append(record)
     df = pl.DataFrame(data, infer_schema_length=len(data))
     return df

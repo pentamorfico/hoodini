@@ -1,56 +1,57 @@
-<h3 align="center">hoodini 🦉🎩: large-scale gene neighborhood analyses that feel like magic</h3>
+<div align="center">
 
----
+<img src="docs/hoodini_logo_github.svg" alt="Hoodini Logo" width="400"/>
 
-<img src="docs/hoodini_logo_github.svg" alt="hoodini logo" width="220" align="left" style="border:0; margin:0 16px 8px 0; display:block;" />
+### Large-scale gene neighborhood analyses that feel like magic
 
-<p align="justify">
-   <b>hoodini</b> is a large-scale gene-centric comparative genomics toolkit that fetches public assemblies, extracts gene neighborhoods, runs pairwise protein and nucleotide comparisons, annotates neighborhoods with extra tools, and builds trees to help interpret genomic context.
-</p>
+[![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Conda](https://img.shields.io/badge/Conda-coming_soon-lightgrey?logo=anaconda&logoColor=white)](https://bioconda.github.io/)
+[![PyPI](https://img.shields.io/badge/PyPI-coming_soon-lightgrey?logo=pypi&logoColor=white)](https://pypi.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
----
-
-<p align="center">
-    <img src="docs/hoodini-viz-export - 2026-01-14T051133.869.svg" alt="Hoodini Visualization Example" width="800"/>
-</p>
-
-<div align = center>
-
-[<kbd> <br> Click here for an interactive demo <br> </kbd>][KBD]
+[**🎮 Live Demo**](https://pentamorfico.github.io/hoodini-docs/demo) · [**📖 Documentation**](https://pentamorfico.github.io/hoodini-docs/docs/hoodini) · [**🖼️ Gallery**](https://pentamorfico.github.io/hoodini-docs/gallery) · [**🧪 Colab**](https://colab.research.google.com/github/pentamorfico/hoodini-colab/blob/main/hoodini_colab.ipynb)
 
 </div>
 
-[KBD]: https://storage.hoodini.bio/hoodini-demo.html
+---
 
-## Introduction
+## 🧬 What is Hoodini?
 
-Hoodini’s primary goal is to make large-scale genomic context analysis fast, practical, and accessible. It’s built to fetch and process thousands of gene neighborhoods in minutes, turning what used to be hours or days of manual work into an interactive workflow.
+**Hoodini** is a gene-centric comparative genomics toolkit that fetches public assemblies, extracts gene neighborhoods, runs pairwise protein and nucleotide comparisons, annotates neighborhoods with defense systems and mobile elements, and builds phylogenetic trees — all with GPU-accelerated interactive visualization.
 
-With GPU-accelerated, real-time interactive visualization, Hoodini lets biologists across disciplines explore bacterial operons, defense systems, and mobile genetic elements at scale, revealing patterns, co-localization signals, and evolutionary signatures that drive discovery and deepen our understanding of prokaryotic genomes.
+<br/>
 
-Beyond exploration, Hoodini offers extensive customization options (including flexible styling, multiple palettes, and fine-grained layout controls) to generate publication-ready, high-quality figures exported for presentations, manuscripts, and supplementary materials.
+<div align="center">
 
-This README documents installation, the command-line interface and all available options, produced output files, and a few examples to get you started.
+| 🚀 **Scales** | ⚡ **Fast** | 🔬 **Annotations** | 🎨 **Visualization** |
+|:---:|:---:|:---:|:---:|
+| 1000s of genomes | Minutes not hours | PADLOC, DefenseFinder, CCTyper | Publication-ready SVG |
 
-### Key Features
+</div>
 
-- **Automated data retrieval**: Fetches assemblies and annotations directly from NCBI using protein or nucleotide accessions
-- **Neighborhood extraction**: Extracts configurable genomic windows around target genes
-- **Protein clustering**: Groups homologous proteins across neighborhoods for synteny comparison
-- **Pairwise comparisons**: Computes protein (AAI) and nucleotide (ANI) similarities
-- **Tree construction**: Builds phylogenetic trees from AAI or ANI distances
-- **Defense system annotation**: Integrates PADLOC, DefenseFinder, CCTyper for antiphage systems
-- **Mobile element detection**: Identifies prophages and plasmids via geNomad
-- **Interactive visualization**: Generates self-contained HTML viewer with aligned neighborhoods and trees
+<br/>
 
-### Use Cases
+<div align="center">
+  <img src="docs/hoodini-viz-export - 2026-01-14T051133.869.svg" alt="Example visualization" width="90%"/>
+</div>
 
-- Comparative analysis of gene neighborhoods across thousands of genomes
-- Evolutionary analysis of genomic islands, defense systems, and mobile elements
-- Identification of conserved gene clusters and syntenic regions
-- Phylogenetic contextualization of protein families
+<br/>
 
-## Quick Start
+---
+
+## ✨ Key Features
+
+- 📥 **Automated data retrieval** — Fetches assemblies from NCBI using protein or nucleotide accessions
+- 🧬 **Neighborhood extraction** — Configurable genomic windows around target genes
+- 🔗 **Protein clustering** — Groups homologous proteins for synteny comparison
+- 📊 **Pairwise comparisons** — AAI (amino acid) and ANI (nucleotide) similarities
+- 🌳 **Tree construction** — Phylogenetic trees from sequence identity
+- 🛡️ **Defense annotations** — PADLOC, DefenseFinder, CCTyper, geNomad
+- 🎨 **Interactive visualization** — Self-contained HTML with 50+ color palettes
+
+---
+
+## 🚀 Quick Start
 
 ```bash
 # Single protein query
@@ -66,35 +67,21 @@ hoodini run --input proteins.txt --output results \
   --num-threads 16
 ```
 
-## Installation
+📖 See the [Tutorial](https://pentamorfico.github.io/hoodini-docs/docs/hoodini/tutorial) for a complete walkthrough.
 
-Hoodini requires both Python packages and several bioinformatics tools. The recommended installation methods handle all dependencies automatically.
+---
 
-### Bioconda (Recommended)
+## 📦 Installation
 
-> ⚠️ **Note:** The Bioconda recipe is currently a work in progress. Until it's available, use the development installation methods below.
+Hoodini requires Python packages and bioinformatics tools. The recommended methods handle all dependencies.
 
-The simplest way to install hoodini is from [Bioconda](https://bioconda.github.io/) using [pixi](https://pixi.sh) or [mamba](https://mamba.readthedocs.io/)/[conda](https://docs.conda.io/).
+> ⚠️ **Note:** Bioconda and PyPI packages are coming soon. Use the development installation below.
 
-**Using pixi:**
+<table>
+<tr>
+<td width="50%">
 
-```bash
-pixi init
-pixi add --channel conda-forge --channel bioconda hoodini
-pixi run hoodini download databases
-```
-
-**Using mamba/conda:**
-
-```bash
-mamba create -n hoodini -c conda-forge -c bioconda hoodini
-mamba activate hoodini
-hoodini download databases
-```
-
-### Development Installation with Pixi
-
-If you're installing from source, pixi can install all dependencies directly from the repository:
+**Using pixi (recommended)**
 
 ```bash
 git clone https://github.com/pentamorfico/hoodini.git
@@ -103,195 +90,168 @@ pixi install
 pixi run hoodini download databases
 ```
 
-This installs hoodini as an editable package along with all required tools.
+</td>
+<td width="50%">
 
-### Python-only Installation (uv/pip)
-
-> ⚠️ **Note:** This only installs Python packages. You must have the other tools available in your PATH for full functionality.
-
-**Using uv:**
+**Using mamba/conda**
 
 ```bash
-uv sync
-uv run hoodini download databases
-```
-
-**Using mamba/conda:**
-
-```bash
-mamba create -n hoodini
+git clone https://github.com/pentamorfico/hoodini.git
+cd hoodini
+mamba env create -f environment.yml
 mamba activate hoodini
 pip install -e .
 hoodini download databases
 ```
 
-### Docker
+</td>
+</tr>
+</table>
 
-> ⚠️ **Note:** The docker image is currently a work in progress. Until it's available, use the development installation methods above.
+<details>
+<summary><strong>Python-only installation (uv/pip)</strong></summary>
+
+<br/>
+
+> ⚠️ This only installs Python packages. Bioinformatics tools must be in your PATH.
+
+**Using uv:**
+
+```bash
+git clone https://github.com/pentamorfico/hoodini.git
+cd hoodini
+uv sync
+uv run hoodini download databases
+```
+
+**Using pip:**
+
+```bash
+git clone https://github.com/pentamorfico/hoodini.git
+cd hoodini
+pip install -e .
+hoodini download databases
+```
+
+</details>
+
+<details>
+<summary><strong>Docker</strong></summary>
+
+<br/>
+
+> ⚠️ Docker image available but not fully tested. Please report any issues.
 
 ```bash
 docker volume create hoodini-data
-
-# Download databases (first time only)
 docker run --rm -v hoodini-data:/app/src/hoodini/data \
   pentamorfico/hoodini:latest hoodini download databases
-
-# Run analysis
 docker run --rm -v hoodini-data:/app/src/hoodini/data -v $(pwd):/work \
   pentamorfico/hoodini:latest hoodini run --input /work/proteins.txt --output /work/results
 ```
 
-## Usage
+</details>
+
+📖 See [Installation Guide](https://pentamorfico.github.io/hoodini-docs/docs/hoodini/installation) for detailed instructions.
+
+---
+
+## 🛠️ Usage
 
 ```
 hoodini run      Run the main pipeline
 hoodini download Download required databases
 ```
 
-### Input Options
+<details>
+<summary><strong>Input Options</strong></summary>
 
-| Option              | Description                                                                  |
-| ------------------- | ---------------------------------------------------------------------------- |
-| `--input ID\|FILE`  | Single accession (e.g.,`WP_012345678.1`) or file with one accession per line |
-| `--inputsheet FILE` | TSV with accessions and custom metadata columns                              |
+| Option | Description |
+|--------|-------------|
+| `--input ID\|FILE` | Single accession or file with one per line |
+| `--inputsheet FILE` | TSV with accessions and custom metadata |
 
-### Output Options
+</details>
 
-| Option         | Description               |
-| -------------- | ------------------------- |
-| `--output DIR` | Output directory          |
-| `--force`      | Overwrite existing output |
-| `--keep`       | Retain intermediate files |
+<details>
+<summary><strong>Neighborhood Extraction</strong></summary>
 
-### Neighborhood Extraction
+| Option | Description |
+|--------|-------------|
+| `--win-mode` | `win_genes` (gene count) or `win_nts` (nucleotides) |
+| `--win INT` | Window size (default: 10 genes or 10000 nt) |
+| `--sorfs` | Re-annotate small ORFs |
 
-| Option          | Description                                                 |
-| --------------- | ----------------------------------------------------------- |
-| `--win-mode`    | `win_genes` (gene count) or `win_nts` (nucleotide distance) |
-| `--win INT`     | Window size (default: 10 genes or 10000 nt)                 |
-| `--min-win INT` | Minimum genes required per side                             |
-| `--sorfs`       | Re-annotate small ORFs in extracted regions                 |
+</details>
 
-### Pairwise Comparisons
+<details>
+<summary><strong>Comparisons & Trees</strong></summary>
 
-| Option           | Description                                      |
-| ---------------- | ------------------------------------------------ |
-| `--prot-links`   | Compute all-vs-all protein similarities          |
-| `--nt-links`     | Compute pairwise nucleotide alignments           |
-| `--nt-aln-mode`  | Alignment method:`blastn`, `fastani`, `minimap2` |
-| `--clust-method` | Protein clustering algorithm                     |
+| Option | Description |
+|--------|-------------|
+| `--prot-links` | All-vs-all protein similarities |
+| `--nt-links` | Pairwise nucleotide alignments |
+| `--tree-mode` | `aai_tree` or `ani_tree` |
 
-### Tree Construction
+</details>
 
-| Option              | Description                                                          |
-| ------------------- | -------------------------------------------------------------------- |
-| `--tree-mode`       | `aai_tree` (amino acid identity) or `ani_tree` (nucleotide identity) |
-| `--tree-file FILE`  | Use precomputed Newick tree                                          |
-| `--aai-mode`        | Tree algorithm:`nj` (neighbor-joining) or `hyper`                    |
-| `--aai-subset-mode` | Proteins for tree:`target_region`, `target_prot`, `window`           |
+<details>
+<summary><strong>Annotations</strong></summary>
 
-### Functional Annotations
+| Option | Description |
+|--------|-------------|
+| `--padloc` | Defense systems (PADLOC) |
+| `--deffinder` | Defense systems (DefenseFinder) |
+| `--cctyper` | CRISPR-Cas typing |
+| `--genomad` | Mobile genetic elements |
+| `--domains LIST` | Domain databases |
 
-| Option           | Description                                                              |
-| ---------------- | ------------------------------------------------------------------------ |
-| `--padloc`       | Detect defense systems with PADLOC                                       |
-| `--deffinder`    | Detect defense systems with DefenseFinder                                |
-| `--cctyper`      | Type CRISPR-Cas systems                                                  |
-| `--genomad`      | Identify mobile genetic elements                                         |
-| `--ncrna FILE`   | Predict ncRNAs with Infernal using custom CM models file (e.g., Rfam.cm) |
-| `--domains LIST` | Search domain databases (comma-separated)                                |
+</details>
 
-### Performance
+📖 Full reference: [CLI Documentation](https://pentamorfico.github.io/hoodini-docs/docs/hoodini/cli-reference)
 
-| Option                           | Description                          |
-| -------------------------------- | ------------------------------------ |
-| `--num-threads INT`              | Parallel threads (default: 4)        |
-| `--max-concurrent-downloads INT` | Concurrent NCBI downloads            |
-| `--api-key KEY`                  | NCBI API key (increases rate limits) |
+---
 
-## Output Structure
+## 📁 Output
 
-```
-results/
-├── assembly_list.txt           # Downloaded assembly accessions
-├── assembly_folder/            # Raw assemblies (*.gbff / *.fna, *.gff)
-├── all_neigh.tsv               # All neighborhood coordinates
-├── neighborhood/
-│   └── neighborhoods.fasta     # Extracted neighborhood sequences
-├── target_prots.fasta          # Target proteins for clustering
-├── target_prots.aln            # Protein alignment (if clustering)
-├── pairwise_aa.tsv             # Protein similarity hits (if --prot-links)
-├── aai_matrix.tsv              # AAI distance matrix (if --tree-mode aai_tree)
-├── nt_links.tsv                # Nucleotide alignments (if --nt-links)
-├── ani_matrix.tsv              # ANI distance matrix (if --tree-mode ani_tree)
-├── tree.nwk                    # Phylogenetic tree
-├── records.csv                 # Input records with metadata
-├── domains.tsv                 # Domain annotations (if --domains)
-├── cctyper/                    # CRISPR-Cas results (if --cctyper)
-├── ncrna/                      # ncRNA predictions (if --ncrna)
-├── genomad/                    # MGE predictions (if --genomad)
-└── hoodini-viz/                # Visualization bundle
-    ├── hoodini-viz.html        # Self-contained interactive viewer
-    ├── tree.nwk                # Newick tree copy
-    ├── tsv/                    # Human-readable tables
-    │   ├── gff.gff
-    │   ├── hoods.txt
-    │   ├── protein_metadata.txt
-    │   ├── tree_metadata.txt
-    │   ├── protein_links.txt
-    │   ├── nucleotide_links.txt
-    │   ├── domains.txt         # (if --domains)
-    │   └── ncrna_metadata.txt  # (if --ncrna)
-    └── parquet/                # Parquet format for viewer
-```
+Hoodini generates a `hoodini-viz/` folder with:
+- Self-contained HTML viewer
+- Newick tree
+- TSV and Parquet data files
 
-## Database Setup
+📖 See [Outputs Guide](https://pentamorfico.github.io/hoodini-docs/docs/hoodini/outputs) for details.
 
-```bash
-hoodini download databases        # Download all required databases
-hoodini download assembly_summary # NCBI assembly index only
-hoodini download metacerberus     # Domain HMM profiles
-```
+---
 
-## Configuration
+## 📚 Learn More
 
-Parameters can be set via CLI flags, TOML config file, or built-in defaults.
-Priority: CLI flags > config file > defaults.
+| Resource | Description |
+|----------|-------------|
+| [📖 Documentation](https://pentamorfico.github.io/hoodini-docs/docs/hoodini) | Full documentation |
+| [🎮 Live Demo](https://pentamorfico.github.io/hoodini-docs/demo) | Interactive examples |
+| [🖼️ Gallery](https://pentamorfico.github.io/hoodini-docs/gallery) | Real-world examples from publications |
+| [🧪 Colab](https://colab.research.google.com/github/pentamorfico/hoodini-colab/blob/main/hoodini_colab.ipynb) | Run in Google Colab |
+| [📦 hoodini-viz](https://github.com/pentamorfico/hoodini-viz) | Visualization library (npm) |
 
-```toml
-# config.toml
-[run]
-num_threads = 8
-win_mode = "win_genes"
-win = 10
-prot_links = true
-tree_mode = "aai_tree"
-```
+---
 
-```bash
-hoodini run --config config.toml --input proteins.txt --output results
-```
+## 🙏 Acknowledgments
 
-## Citation
+Hoodini is inspired by excellent tools in the field:
 
-If you use hoodini in your research, please cite:
+- [GCsnap](https://github.com/JoanaMPereira/GCsnap) — Gene context visualization
+- [FlaGs](https://github.com/GCA-VH-lab/FlaGs) — Flanking genes analysis
+- [Taxonium](https://github.com/theosanderson/taxonium) — Large trees visualization
+- [clinker](https://github.com/gamcil/clinker) — Gene cluster comparison
+- [gggenes](https://github.com/wilkox/gggenes) — Gene arrow maps in R
+- [gggenomes](https://github.com/thackl/gggenomes) — Comparative genomics visualization
+
+---
+
+## 📄 Citation
 
 > [Citation pending publication]
 
-## Acknowledgments
+## 📜 License
 
-Hoodini is heavily inspired by the work of several excellent tools in the field. We encourage you to check them out:
-
-- [GCsnap](https://github.com/JoanaMPereira/GCsnap) — Gene context visualization with interactive output
-- [FlaGs](https://github.com/GCA-VH-lab/FlaGs) — Flanking genes analysis
-- [Taxonium](https://github.com/theosanderson/taxonium) — Large trees interactive visualization
-- [clinker &amp; clustermap.js](https://github.com/gamcil/clinker) — Gene cluster comparison
-- [gggenes](https://github.com/wilkox/gggenes) — Gene arrow maps in R
-- [gggenomes](https://github.com/thackl/gggenomes) — Comparative genomics visualization
-- [geneviewer](https://github.com/nvelden/geneviewer) — Interactive gene visualization
-
-## License
-
-See LICENSE file.
-
-[KBD]: https://storage.hoodini.bio/hoodini-demo.html
+MIT License. See [LICENSE](LICENSE) file.

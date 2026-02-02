@@ -18,7 +18,8 @@ src/hoodini/data/contig_lengths/
 .ruff_cache/
 .mypy_cache/
 # Generated examples / results
-example/results/
+example/
+run.log
 .pytest_cache/
 **/*.pyc
 .ruff_cache/
@@ -26,3 +27,4 @@ example/results/
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+tests/feature_coverage/outputs/
