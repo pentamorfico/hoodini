@@ -7,8 +7,6 @@ Tests:
 - Config merging (defaults + TOML + CLI)
 """
 
-import pytest
-
 from hoodini.config import load_default_config
 from hoodini.config.settings import RuntimeConfig
 
@@ -127,9 +125,9 @@ class TestConfigMerging:
         """CLI values should override defaults."""
         defaults = load_default_config()
         cli_values = {"wn": 25000, "tree_mode": "aai_tree"}
-        
+
         merged = {**defaults, **cli_values}
-        
+
         assert merged["wn"] == 25000
         assert merged["tree_mode"] == "aai_tree"
 
@@ -137,10 +135,10 @@ class TestConfigMerging:
         """None values should not override defaults."""
         defaults = load_default_config()
         cli_values = {"wn": None, "tree_mode": "aai_tree"}
-        
+
         # Filter out None values before merging
         cli_filtered = {k: v for k, v in cli_values.items() if v is not None}
         merged = {**defaults, **cli_filtered}
-        
+
         assert merged["wn"] == defaults["wn"]
         assert merged["tree_mode"] == "aai_tree"

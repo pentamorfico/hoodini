@@ -8,8 +8,6 @@ Tests:
 - Edge cases and boundary conditions
 """
 
-import pytest
-
 
 class TestWindowModes:
     """Tests for window mode logic."""
@@ -60,7 +58,7 @@ class TestWindowEdgeCases:
         """Small contigs may be below minimum window size."""
         contig_length = 5000
         wn = 50000
-        
+
         is_below_minwin = contig_length < wn
         assert is_below_minwin is True
 
@@ -68,24 +66,24 @@ class TestWindowEdgeCases:
         """Without minwin, windows should be symmetric around target."""
         wn = 50000
         target_pos = 100000
-        
+
         upstream_start = target_pos - wn
         downstream_end = target_pos + wn
-        
+
         upstream_size = target_pos - upstream_start
         downstream_size = downstream_end - target_pos
-        
+
         assert upstream_size == downstream_size == wn
 
     def test_asymmetric_window_with_minwin(self):
         """With minwin, one side can be shorter."""
         wn = 50000
         minwin = 8000
-        minwin_type = "upstream"
-        
+        # minwin_type would be "upstream" or "downstream"
+
         # Simulating a case where upstream is constrained
         actual_upstream = minwin  # constrained
-        actual_downstream = wn   # full size
-        
+        actual_downstream = wn  # full size
+
         assert actual_upstream < actual_downstream
         assert actual_upstream >= minwin

@@ -9,8 +9,6 @@ Tests:
 - same_id mode behavior
 """
 
-import pytest
-
 
 class TestCandModeDefinitions:
     """Tests for candidate mode definitions and semantics."""
@@ -43,7 +41,7 @@ class TestAnyIpgMode:
             {"protein_id": "WP_123", "assembly": "GCF_002"},
             {"protein_id": "WP_123", "assembly": "GCA_001"},
         ]
-        
+
         # any_ipg keeps all
         selected = records  # No filtering
         assert len(selected) == 3
@@ -58,7 +56,7 @@ class TestBestIpgMode:
             {"protein_id": "WP_123", "assembly": "GCA_001", "is_refseq": False},
             {"protein_id": "WP_123", "assembly": "GCF_001", "is_refseq": True},
         ]
-        
+
         # best_ipg prefers RefSeq
         best = max(records, key=lambda r: r["is_refseq"])
         assert best["assembly"].startswith("GCF")
@@ -74,14 +72,14 @@ class TestBestIdMode:
             {"protein_id": "WP_123", "assembly": "GCF_002"},
             {"protein_id": "WP_456", "assembly": "GCF_003"},
         ]
-        
+
         # Group by protein, take one per protein
         proteins = {}
         for r in records:
             pid = r["protein_id"]
             if pid not in proteins:
                 proteins[pid] = r
-        
+
         assert len(proteins) == 2
 
 
@@ -95,7 +93,7 @@ class TestOneIdMode:
             {"protein_id": "WP_456", "assembly": "GCF_002"},
             {"protein_id": "WP_789", "assembly": "GCF_003"},
         ]
-        
+
         # one_id takes just the first/best
         selected = [records[0]]
         assert len(selected) == 1
@@ -111,7 +109,7 @@ class TestSameIdMode:
             {"protein_id": "WP_123", "assembly": "GCF_002", "ipg_id": 100},
             {"protein_id": "WP_456", "assembly": "GCF_003", "ipg_id": 200},
         ]
-        
+
         # same_id groups by IPG (identical proteins)
         ipg_groups = {}
         for r in records:
@@ -119,7 +117,7 @@ class TestSameIdMode:
             if ipg not in ipg_groups:
                 ipg_groups[ipg] = []
             ipg_groups[ipg].append(r)
-        
+
         # Should have 2 groups
         assert len(ipg_groups) == 2
         # First group has 2 records (identical proteins)

@@ -5,9 +5,6 @@ These tests verify that modules interact correctly without
 running the full heavy pipeline.
 """
 
-import pytest
-from pathlib import Path
-
 from hoodini.config import load_default_config
 from hoodini.config.settings import RuntimeConfig
 
@@ -26,7 +23,7 @@ class TestRuntimeConfigIntegration:
             wn=50000,
             num_threads=4,
         )
-        
+
         # Verify all expected attributes exist and are accessible
         assert cfg.input_path is not None
         assert cfg.output is not None
@@ -39,7 +36,7 @@ class TestRuntimeConfigIntegration:
     def test_config_defaults_merge_correctly(self, tmp_path):
         """Defaults should merge correctly with explicit config."""
         defaults = load_default_config()
-        
+
         # Merge with explicit values
         merged = {
             **defaults,
@@ -47,7 +44,7 @@ class TestRuntimeConfigIntegration:
             "output": str(tmp_path / "output"),
             "tree_mode": "aai_tree",
         }
-        
+
         cfg = RuntimeConfig(
             input_path=merged["input_path"],
             output=merged["output"],
@@ -55,7 +52,7 @@ class TestRuntimeConfigIntegration:
             wn=merged.get("wn", 50000),
             mod=merged.get("mod", "win_nts"),
         )
-        
+
         assert cfg.tree_mode == "aai_tree"
         assert cfg.wn == defaults.get("wn", 50000)
 
@@ -67,7 +64,7 @@ class TestOutputStructure:
         """Pipeline should create output folder structure."""
         output = tmp_path / "test_output"
         output.mkdir()
-        
+
         # Expected subdirectories
         expected_subdirs = [
             "assembly_folder",
@@ -75,10 +72,10 @@ class TestOutputStructure:
             "hoodini-viz/tsv",
             "hoodini-viz/parquet",
         ]
-        
+
         for subdir in expected_subdirs:
             (output / subdir).mkdir(parents=True, exist_ok=True)
-        
+
         # Verify structure
         assert (output / "assembly_folder").exists()
         assert (output / "hoodini-viz").exists()
@@ -97,7 +94,7 @@ class TestAnnotationFlags:
             deffinder=True,
             cctyper=True,
         )
-        
+
         # All should be set
         active_annotations = []
         if cfg.padloc:
@@ -106,7 +103,7 @@ class TestAnnotationFlags:
             active_annotations.append("deffinder")
         if cfg.cctyper:
             active_annotations.append("cctyper")
-        
+
         assert len(active_annotations) == 3
 
     def test_no_annotations_is_valid(self, tmp_path):
@@ -120,7 +117,7 @@ class TestAnnotationFlags:
             genomad=False,
             emapper=False,
         )
-        
+
         # All annotation flags should be False
         assert cfg.padloc is False
         assert cfg.deffinder is False

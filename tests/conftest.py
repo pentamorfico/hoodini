@@ -2,7 +2,6 @@
 Pytest configuration and shared fixtures for Hoodini tests.
 """
 
-import os
 import sys
 from pathlib import Path
 

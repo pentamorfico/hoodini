@@ -67,13 +67,13 @@ MANDATORY_OUTPUTS = [
 
 # Files/dirs that should NOT exist when keep=False
 TEMP_FILES_TO_REMOVE = [
-    "assembly_folder",           # Raw GenBank files
-    "tmp",                       # General temp
-    "tmp_mmseqs",                # MMseqs2 temp
-    "ani_split",                 # FastANI splits
-    "fastani_pairwise_visual",   # FastANI viz
-    "struct",                    # Foldseek structures
-    "temp",                      # Foldseek temp
+    "assembly_folder",  # Raw GenBank files
+    "tmp",  # General temp
+    "tmp_mmseqs",  # MMseqs2 temp
+    "ani_split",  # FastANI splits
+    "fastani_pairwise_visual",  # FastANI viz
+    "struct",  # Foldseek structures
+    "temp",  # Foldseek temp
     "temp.fasta",
     "temp.gff",
     "proteome.fasta",
@@ -103,23 +103,23 @@ OPTIONAL_OUTPUT_MAP = {
 
 def validate_outputs(output_dir: Path, config: dict, keep: bool = False) -> tuple[bool, list[str]]:
     """Validate that all expected outputs exist and temp files are cleaned.
-    
+
     Args:
         output_dir: Path to the output directory
         config: The test config dict (to check optional outputs)
         keep: Whether --keep flag was used
-        
+
     Returns:
         Tuple of (all_valid, list_of_issues)
     """
     issues = []
-    
+
     # 1. Check mandatory outputs exist
     for path in MANDATORY_OUTPUTS:
         full_path = output_dir / path
         if not full_path.exists():
             issues.append(f"MISSING mandatory: {path}")
-    
+
     # 2. Check optional outputs based on config
     for opt, paths in OPTIONAL_OUTPUT_MAP.items():
         if config.get(opt):
@@ -133,26 +133,33 @@ def validate_outputs(output_dir: Path, config: dict, keep: bool = False) -> tupl
                     full_path = output_dir / path
                     if not full_path.exists():
                         issues.append(f"MISSING optional ({opt}): {path}")
-    
+
     # 3. Check temp files are cleaned (only if keep=False)
     if not keep:
         for path in TEMP_FILES_TO_REMOVE:
             full_path = output_dir / path
             if full_path.exists():
                 issues.append(f"TEMP not cleaned: {path}")
-    
+
     # 4. Check for any unexpected large directories
     if not keep:
         for item in output_dir.iterdir():
             if item.is_dir() and item.name not in [
-                "hoodini-viz", "neighborhood", 
-                "padloc", "defense_finder", "cctyper", "genomad", "ncrna"
+                "hoodini-viz",
+                "neighborhood",
+                "padloc",
+                "defense_finder",
+                "cctyper",
+                "genomad",
+                "ncrna",
             ]:
                 # Check size - if > 10MB, likely a temp we missed
                 total_size = sum(f.stat().st_size for f in item.rglob("*") if f.is_file())
                 if total_size > 10_000_000:  # 10MB
-                    issues.append(f"LARGE unexpected dir: {item.name} ({total_size // 1_000_000}MB)")
-    
+                    issues.append(
+                        f"LARGE unexpected dir: {item.name} ({total_size // 1_000_000}MB)"
+                    )
+
     return len(issues) == 0, issues
 
 
@@ -161,7 +168,7 @@ def print_output_summary(output_dir: Path):
     if not output_dir.exists():
         print(f"  {RED}Output directory does not exist{NC}")
         return
-    
+
     print(f"\n{CYAN}Output contents:{NC}")
     for item in sorted(output_dir.iterdir()):
         if item.is_dir():
@@ -169,7 +176,11 @@ def print_output_summary(output_dir: Path):
             files = list(item.rglob("*"))
             file_count = sum(1 for f in files if f.is_file())
             total_size = sum(f.stat().st_size for f in files if f.is_file())
-            size_str = f"{total_size // 1024}KB" if total_size < 1_000_000 else f"{total_size // 1_000_000}MB"
+            size_str = (
+                f"{total_size // 1024}KB"
+                if total_size < 1_000_000
+                else f"{total_size // 1_000_000}MB"
+            )
             print(f"  📁 {item.name}/ ({file_count} files, {size_str})")
         else:
             size = item.stat().st_size
@@ -177,16 +188,20 @@ def print_output_summary(output_dir: Path):
             print(f"  📄 {item.name} ({size_str})")
 
 
-def save_result(test_type: str, test_id: int | str, name: str, passed: bool, error: str | None = None):
+def save_result(
+    test_type: str, test_id: int | str, name: str, passed: bool, error: str | None = None
+):
     """Save a test result to the global results list."""
-    TEST_RESULTS.append({
-        "type": test_type,
-        "id": test_id,
-        "name": name,
-        "passed": passed,
-        "error": error,
-        "timestamp": datetime.now().isoformat(),
-    })
+    TEST_RESULTS.append(
+        {
+            "type": test_type,
+            "id": test_id,
+            "name": name,
+            "passed": passed,
+            "error": error,
+            "timestamp": datetime.now().isoformat(),
+        }
+    )
 
 
 def write_results_log():
@@ -199,7 +214,7 @@ def write_results_log():
             "total": len(TEST_RESULTS),
             "passed": sum(1 for r in TEST_RESULTS if r["passed"]),
             "failed": sum(1 for r in TEST_RESULTS if not r["passed"]),
-        }
+        },
     }
     with open(RESULTS_LOG, "w") as f:
         json.dump(log_data, f, indent=2)
@@ -211,16 +226,16 @@ def show_last_results():
     if not RESULTS_LOG.exists():
         print(f"{RED}No results log found. Run tests first.{NC}")
         return
-    
+
     with open(RESULTS_LOG) as f:
         data = json.load(f)
-    
+
     print(f"\n{CYAN}{BOLD}Last Test Run: {data['run_timestamp']}{NC}\n")
-    
+
     summary = data["summary"]
     color = GREEN if summary["failed"] == 0 else RED
     print(f"{color}Summary: {summary['passed']} passed, {summary['failed']} failed{NC}\n")
-    
+
     # Show failed tests with details
     failed = [r for r in data["results"] if not r["passed"]]
     if failed:
@@ -235,7 +250,7 @@ def show_last_results():
                 for line in err.split("\n"):
                     print(f"    {line}")
             print()
-    
+
     # Show passed tests briefly
     passed = [r for r in data["results"] if r["passed"]]
     if passed:
@@ -248,19 +263,36 @@ def show_last_results():
 ALL_OPTIONS = {
     "Input": ["input_path", "inputsheet", "keep", "debug"],
     "Tree Modes": [
-        "taxonomy", "aai_tree", "ani_tree", "fast_ml", "fast_nj",
-        "neigh_phylo_tree", "neigh_similarity_tree", "foldmason_tree"
+        "taxonomy",
+        "aai_tree",
+        "ani_tree",
+        "fast_ml",
+        "fast_nj",
+        "neigh_phylo_tree",
+        "neigh_similarity_tree",
+        "foldmason_tree",
     ],
     "Clustering": ["diamond_deepclust", "deepmmseqs", "blastp", "jackhmmer"],
     "Cand Mode": ["any_ipg", "best_ipg", "best_id", "one_id", "same_id"],
     "Annotations": [
-        "padloc", "deffinder", "cctyper", "genomad", 
-        "domains", "ncrna", "sorfs", "blast"
+        "padloc",
+        "deffinder",
+        "cctyper",
+        "genomad",
+        "domains",
+        "ncrna",
+        "sorfs",
+        "blast",
     ],
     "Pairwise": [
-        "aai_mode=aai", "aai_mode=wgrr", "ani_mode=blastn",
-        "prot_links", "nt_links", 
-        "minimap2", "fastani", "intergenic_blastn"
+        "aai_mode=aai",
+        "aai_mode=wgrr",
+        "ani_mode=blastn",
+        "prot_links",
+        "nt_links",
+        "minimap2",
+        "fastani",
+        "intergenic_blastn",
     ],
     "Window": ["win_nts", "win_genes", "minwin_upstream", "minwin_downstream"],
 }
@@ -269,6 +301,7 @@ ALL_OPTIONS = {
 @dataclass
 class TestCase:
     """A single pipeline test case."""
+
     id: int
     name: str
     description: str
@@ -285,7 +318,7 @@ class TestCase:
         try:
             defaults = load_default_config()
             merged = {**defaults, **self.config}
-            
+
             # Resolve input paths to absolute
             if merged.get("input_path"):
                 merged["input_path"] = str(INPUTS_DIR / merged["input_path"])
@@ -295,7 +328,7 @@ class TestCase:
                 merged["blast"] = str(INPUTS_DIR / merged["blast"])
             # Output goes to outputs/ folder (gitignored)
             merged["output"] = str(OUTPUTS_DIR / merged["output"])
-            
+
             cfg = RuntimeConfig(
                 input_path=merged.get("input_path"),
                 inputsheet=merged.get("inputsheet"),
@@ -341,11 +374,11 @@ class TestCase:
             print(f"  tree_mode: {cfg.tree_mode}\n")
 
             run_pipeline(cfg)
-            
+
             # Validate outputs
             output_path = Path(cfg.output)
             print_output_summary(output_path)
-            
+
             valid, issues = validate_outputs(output_path, self.config, keep=cfg.keep)
             if not valid:
                 print(f"\n{YELLOW}Output validation issues:{NC}")
@@ -353,7 +386,7 @@ class TestCase:
                     print(f"  {YELLOW}⚠ {issue}{NC}")
             else:
                 print(f"\n{GREEN}✓ Output validation passed{NC}")
-            
+
             print(f"\n{GREEN}✓ TEST {self.id} PASSED{NC}\n")
             save_result("pipeline", self.id, self.name, True)
             return True
@@ -376,7 +409,15 @@ TESTS = [
         id=1,
         name="Taxonomy + PADLOC + DefenseFinder",
         description="Taxonomy tree with defense system annotations",
-        covers=["taxonomy", "padloc", "deffinder", "input_path", "diamond_deepclust", "any_ipg", "win_nts"],
+        covers=[
+            "taxonomy",
+            "padloc",
+            "deffinder",
+            "input_path",
+            "diamond_deepclust",
+            "any_ipg",
+            "win_nts",
+        ],
         config={
             "input_path": "cas9.txt",
             "output": "out_test1",
@@ -485,7 +526,15 @@ TESTS = [
         id=8,
         name="Inputsheet + BLASTp + win_genes",
         description="Inputsheet input with blastp clustering",
-        covers=["inputsheet", "blastp", "win_genes", "intergenic_blastn", "debug", "keep", "minwin_downstream"],
+        covers=[
+            "inputsheet",
+            "blastp",
+            "win_genes",
+            "intergenic_blastn",
+            "debug",
+            "keep",
+            "minwin_downstream",
+        ],
         config={
             "inputsheet": "inputsheet.tsv",
             "output": "out_test8",
@@ -520,25 +569,26 @@ TESTS = [
 # COVERAGE MATRIX - Generated programmatically
 # =============================================================================
 
+
 def generate_coverage_matrix() -> str:
     """Generate coverage matrix from test definitions."""
     # Collect all unique options from tests
     all_covered = set()
     for t in TESTS:
         all_covered.update(t.covers)
-    
+
     # Build matrix
     n_tests = len(TESTS)
     col_width = 4
     header = "│".join([f"T{t.id}".center(col_width) for t in TESTS])
-    
+
     lines = []
     lines.append("=" * 100)
     lines.append("CLI OPTIONS COVERAGE MATRIX".center(100))
     lines.append("=" * 100)
     lines.append(f"{'OPTION':<30} │ {header} │")
     lines.append("-" * 100)
-    
+
     for category, options in ALL_OPTIONS.items():
         lines.append(f"{category.upper():<30} │" + "│".join([" " * col_width] * n_tests) + "│")
         for opt in options:
@@ -550,7 +600,7 @@ def generate_coverage_matrix() -> str:
                     row.append(" " * col_width)
             lines.append(f"  {opt:<28} │{'│'.join(row)}│")
         lines.append("-" * 100)
-    
+
     # Summary
     lines.append("")
     lines.append("COVERAGE SUMMARY:")
@@ -560,13 +610,15 @@ def generate_coverage_matrix() -> str:
         for opt in opts:
             if opt not in all_covered:
                 not_covered.append(opt)
-    
+
     lines.append(f"  Covered ({len(covered)}): {', '.join(covered)}")
     if not_covered:
         lines.append(f"  Not covered ({len(not_covered)}): {', '.join(not_covered)}")
     lines.append("")
-    lines.append("Special setup required: config (TOML), assembly_folder, apikey, tree_file, use_input_tree")
-    
+    lines.append(
+        "Special setup required: config (TOML), assembly_folder, apikey, tree_file, use_input_tree"
+    )
+
     return "\n".join(lines)
 
 
@@ -574,9 +626,11 @@ def generate_coverage_matrix() -> str:
 # DOWNLOAD TESTS - Testing hoodini download subcommands
 # =============================================================================
 
+
 @dataclass
 class DownloadTestCase:
     """A single download test case."""
+
     id: int
     name: str
     description: str
@@ -595,10 +649,10 @@ class DownloadTestCase:
             # Dynamic import
             module = __import__(self.module, fromlist=[self.func])
             func = getattr(module, self.func)
-            
+
             print(f"{CYAN}Calling {self.func}({self.kwargs}){NC}\n")
             func(**self.kwargs)
-            
+
             print(f"\n{GREEN}✓ DOWNLOAD TEST {self.id} PASSED{NC}\n")
             save_result("download", self.id, self.name, True)
             return True
@@ -663,13 +717,15 @@ DOWNLOAD_TESTS = [
 # UTILS TESTS - Testing hoodini utils subcommands
 # =============================================================================
 
+
 @dataclass
 class UtilsTestCase:
     """A single utils test case."""
+
     id: int
     name: str
     description: str
-    
+
     def run(self) -> bool:
         """Execute the utils test - implemented per test."""
         raise NotImplementedError
@@ -677,7 +733,7 @@ class UtilsTestCase:
 
 class Nuc2AsmlenTest(UtilsTestCase):
     """Test nuc2asmlen utility."""
-    
+
     def __init__(self):
         super().__init__(
             id=1,
@@ -693,26 +749,28 @@ class Nuc2AsmlenTest(UtilsTestCase):
 
         try:
             from hoodini.pipeline.helpers.nuc2asmlen import run_nuc2asmlen
-            
+
             # Test with a list of nucleotide accessions
             test_accessions = [
-                "NC_000913.3",   # E. coli K-12 chromosome
-                "NZ_CP028116.1", # Another example
+                "NC_000913.3",  # E. coli K-12 chromosome
+                "NZ_CP028116.1",  # Another example
             ]
-            
+
             print(f"{CYAN}Testing run_nuc2asmlen with accessions: {test_accessions}{NC}\n")
             df = run_nuc2asmlen(test_accessions)
-            
+
             print(f"Result DataFrame shape: {df.shape}")
             print(df)
-            
+
             # Verify we got results
             if df.height > 0:
                 print(f"\n{GREEN}✓ UTILS TEST {self.id} PASSED{NC}\n")
                 save_result("utils", self.id, self.name, True)
                 return True
             else:
-                print(f"\n{YELLOW}⚠ UTILS TEST {self.id}: No results (may be expected if contig_lengths.parquet is empty){NC}\n")
+                print(
+                    f"\n{YELLOW}⚠ UTILS TEST {self.id}: No results (may be expected if contig_lengths.parquet is empty){NC}\n"
+                )
                 save_result("utils", self.id, self.name, True)  # Not a failure
                 return True  # Not a failure, just no data
 
@@ -727,7 +785,7 @@ class Nuc2AsmlenTest(UtilsTestCase):
 
 class PrefetchLinksTest(UtilsTestCase):
     """Test prefetch_links utility."""
-    
+
     def __init__(self):
         super().__init__(
             id=2,
@@ -743,21 +801,21 @@ class PrefetchLinksTest(UtilsTestCase):
 
         try:
             from hoodini.pipeline.helpers.prefetch_links import get_prefetched_link_table
-            
+
             # Test with a few assembly accessions
             test_accessions = [
                 "GCF_000005845.2",  # E. coli K-12
                 "GCF_000009045.1",  # Bacillus subtilis
             ]
-            
+
             print(f"{CYAN}Testing get_prefetched_link_table with assemblies: {test_accessions}{NC}")
             print(f"{CYAN}Kinds: gbff, gff, fna{NC}\n")
-            
+
             df = get_prefetched_link_table(test_accessions, kinds=["gbff", "gff", "fna"])
-            
+
             print(f"Result DataFrame shape: {df.shape}")
             print(df.head(10))
-            
+
             # Verify we got results
             if df.height > 0:
                 print(f"\n{GREEN}✓ UTILS TEST {self.id} PASSED{NC}\n")
@@ -779,7 +837,7 @@ class PrefetchLinksTest(UtilsTestCase):
 
 class PrefetchLinksFileTest(UtilsTestCase):
     """Test prefetch_links with file input (like CLI)."""
-    
+
     def __init__(self):
         super().__init__(
             id=3,
@@ -795,28 +853,28 @@ class PrefetchLinksFileTest(UtilsTestCase):
 
         try:
             from hoodini.pipeline.helpers.prefetch_links import get_prefetched_link_table
-            
+
             # Create temp file with assembly IDs
             test_accessions = ["GCF_000005845.2", "GCF_000009045.1"]
-            
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
                 f.write("\n".join(test_accessions))
                 temp_file = f.name
-            
+
             try:
                 # Read file like CLI does
                 with open(temp_file) as fh:
                     accs = [l.strip() for l in fh if l.strip()]
-                
+
                 print(f"{CYAN}Testing with file input: {temp_file}{NC}")
                 print(f"{CYAN}Assemblies: {accs}{NC}")
                 print(f"{CYAN}Kinds: sequence_report{NC}\n")
-                
+
                 df = get_prefetched_link_table(accs, kinds=["sequence_report"])
-                
+
                 print(f"Result DataFrame shape: {df.shape}")
                 print(df)
-                
+
                 if df.height > 0:
                     print(f"\n{GREEN}✓ UTILS TEST {self.id} PASSED{NC}\n")
                     save_result("utils", self.id, self.name, True)
@@ -856,12 +914,12 @@ def list_tests():
         print(f"  {YELLOW}{t.id}{NC}: {t.name}")
         print(f"     {t.description}")
         print(f"     Covers: {', '.join(t.covers)}\n")
-    
+
     print(f"\n{CYAN}{BOLD}Download Tests:{NC}\n")
     for t in DOWNLOAD_TESTS:
         print(f"  {YELLOW}D{t.id}{NC}: {t.name}")
         print(f"     {t.description}\n")
-    
+
     print(f"\n{CYAN}{BOLD}Utils Tests:{NC}\n")
     for t in UTILS_TESTS:
         print(f"  {YELLOW}U{t.id}{NC}: {t.name}")
@@ -882,7 +940,9 @@ def run_tests(test_ids: list[int] | None = None) -> tuple[int, int]:
 
 def run_download_tests(test_ids: list[int] | None = None) -> tuple[int, int]:
     """Run specified download tests or all. Returns (passed, failed)."""
-    tests_to_run = DOWNLOAD_TESTS if test_ids is None else [t for t in DOWNLOAD_TESTS if t.id in test_ids]
+    tests_to_run = (
+        DOWNLOAD_TESTS if test_ids is None else [t for t in DOWNLOAD_TESTS if t.id in test_ids]
+    )
     passed = failed = 0
     for test in tests_to_run:
         if test.run():
@@ -906,18 +966,20 @@ def run_utils_tests(test_ids: list[int] | None = None) -> tuple[int, int]:
 
 def main():
     args = sys.argv[1:]
-    
+
     # No args = run pipeline tests only
     if not args:
         print(f"{CYAN}{BOLD}")
         print("╔══════════════════════════════════════════════════════════════════════════════╗")
-        print(f"║           HOODINI PIPELINE TEST SUITE - Running ALL Tests (1-{len(TESTS)})             ║")
+        print(
+            f"║           HOODINI PIPELINE TEST SUITE - Running ALL Tests (1-{len(TESTS)})             ║"
+        )
         print("╚══════════════════════════════════════════════════════════════════════════════╝")
         print(f"{NC}")
-        
+
         print_coverage()
         passed, failed = run_tests()
-        
+
         write_results_log()
         color = GREEN if failed == 0 else RED
         print(f"{color}")
@@ -926,33 +988,35 @@ def main():
         print(f"{'=' * 60}")
         print(f"{NC}")
         sys.exit(0 if failed == 0 else 1)
-    
+
     if "--coverage" in args or "-c" in args:
         print_coverage()
         return
-    
+
     if "--list" in args or "-l" in args:
         list_tests()
         return
-    
+
     if "--help" in args or "-h" in args:
         print(__doc__)
         return
-    
+
     if "--results" in args or "-r" in args:
         show_last_results()
         return
-    
+
     # Run download tests
     if "--download" in args or "-d" in args:
         print(f"{CYAN}{BOLD}")
         print("╔══════════════════════════════════════════════════════════════════════════════╗")
-        print(f"║           HOODINI DOWNLOAD TESTS - Running {len(DOWNLOAD_TESTS)} tests                          ║")
+        print(
+            f"║           HOODINI DOWNLOAD TESTS - Running {len(DOWNLOAD_TESTS)} tests                          ║"
+        )
         print("╚══════════════════════════════════════════════════════════════════════════════╝")
         print(f"{NC}")
-        
+
         passed, failed = run_download_tests()
-        
+
         write_results_log()
         color = GREEN if failed == 0 else RED
         print(f"{color}")
@@ -961,17 +1025,19 @@ def main():
         print(f"{'=' * 60}")
         print(f"{NC}")
         sys.exit(0 if failed == 0 else 1)
-    
+
     # Run utils tests
     if "--utils" in args or "-u" in args:
         print(f"{CYAN}{BOLD}")
         print("╔══════════════════════════════════════════════════════════════════════════════╗")
-        print(f"║           HOODINI UTILS TESTS - Running {len(UTILS_TESTS)} tests                             ║")
+        print(
+            f"║           HOODINI UTILS TESTS - Running {len(UTILS_TESTS)} tests                             ║"
+        )
         print("╚══════════════════════════════════════════════════════════════════════════════╝")
         print(f"{NC}")
-        
+
         passed, failed = run_utils_tests()
-        
+
         write_results_log()
         color = GREEN if failed == 0 else RED
         print(f"{color}")
@@ -980,7 +1046,7 @@ def main():
         print(f"{'=' * 60}")
         print(f"{NC}")
         sys.exit(0 if failed == 0 else 1)
-    
+
     # Run all tests
     if "--all" in args or "-a" in args:
         print(f"{CYAN}{BOLD}")
@@ -988,26 +1054,26 @@ def main():
         print("║           HOODINI COMPLETE TEST SUITE - Pipeline + Download + Utils         ║")
         print("╚══════════════════════════════════════════════════════════════════════════════╝")
         print(f"{NC}")
-        
+
         print_coverage()
-        
+
         total_passed = total_failed = 0
-        
+
         print(f"\n{CYAN}{BOLD}=== PIPELINE TESTS ==={NC}\n")
         p, f = run_tests()
         total_passed += p
         total_failed += f
-        
+
         print(f"\n{CYAN}{BOLD}=== DOWNLOAD TESTS ==={NC}\n")
         p, f = run_download_tests()
         total_passed += p
         total_failed += f
-        
+
         print(f"\n{CYAN}{BOLD}=== UTILS TESTS ==={NC}\n")
         p, f = run_utils_tests()
         total_passed += p
         total_failed += f
-        
+
         write_results_log()
         color = GREEN if total_failed == 0 else RED
         print(f"{color}")
@@ -1016,7 +1082,7 @@ def main():
         print(f"{'=' * 60}")
         print(f"{NC}")
         sys.exit(0 if total_failed == 0 else 1)
-    
+
     # Specific pipeline test numbers
     try:
         test_ids = [int(a) for a in args]
@@ -1026,7 +1092,9 @@ def main():
         print(f"{color}Results: {passed} passed, {failed} failed{NC}")
         sys.exit(0 if failed == 0 else 1)
     except ValueError:
-        print(f"{RED}Invalid argument. Use test numbers (1-{len(TESTS)}), --download, --utils, --all, --coverage, --list, or --help{NC}")
+        print(
+            f"{RED}Invalid argument. Use test numbers (1-{len(TESTS)}), --download, --utils, --all, --coverage, --list, or --help{NC}"
+        )
         sys.exit(1)
 
 
