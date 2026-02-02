@@ -25,7 +25,7 @@
 
 | 🚀 **Scales** | ⚡ **Fast** | 🔬 **Annotations** | 🎨 **Visualization** |
 |:---:|:---:|:---:|:---:|
-| 1000s of genomes | Minutes not hours | PADLOC, DefenseFinder, CCTyper | Publication-ready SVG |
+| 1000s of genomes | Minutes | PADLOC, DefenseFinder, CCTyper | Publication-ready SVG |
 
 </div>
 
