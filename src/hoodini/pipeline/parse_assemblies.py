@@ -510,7 +510,7 @@ def run_assembly_parser(
                     filterable = all_neigh.filter(pl.col("is_full_contig") == False)  # noqa: E712
                 else:
                     filterable = all_neigh
-                
+
                 if minwin_type == "total":
                     short_contigs = (
                         filterable.filter(pl.col("length") < minwin)["unique_id"].unique().to_list()

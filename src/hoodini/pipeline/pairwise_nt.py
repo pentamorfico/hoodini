@@ -301,7 +301,7 @@ def _skani_like_from_blast(
 
 
 def _run_mappy_target_block(args):
-    (fasta_path, preset, min_mapq, mm2_threads_per_worker, tid, q_ids) = args
+    fasta_path, preset, min_mapq, mm2_threads_per_worker, tid, q_ids = args
     idx = SeqIO.index(fasta_path, "fasta")
     try:
         t_seq = str(idx[tid].seq)

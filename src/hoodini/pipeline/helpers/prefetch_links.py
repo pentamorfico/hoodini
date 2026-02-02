@@ -120,14 +120,12 @@ def _load_local_assembly_map() -> dict:
 
         con = duckdb.connect(":memory:")
         con.execute('SET memory_limit = "4GB"')
-        df = con.execute(
-            f"""
+        df = con.execute(f"""
             SELECT 
                 CAST(assembly_accession AS VARCHAR) as assembly_accession,
                 CAST(ftp_path AS VARCHAR) as ftp_path
             FROM read_parquet('{str(path)}')
-        """
-        ).pl()
+        """).pl()
         con.close()
 
         _LOCAL_ASM_MAP = dict(

@@ -208,7 +208,7 @@ def write_viz_outputs(
     # Filter out failed records - only include neighborhoods with valid_uids
     # This ensures failed records don't appear in visualization (gff, hoods, prots)
     if valid_uids is not None:
-        valid_uid_set = set(str(uid) for uid in valid_uids)
+        valid_uid_set = {str(uid) for uid in valid_uids}
         # Filter all_neigh by unique_id
         if all_neigh.height > 0 and "unique_id" in all_neigh.columns:
             all_neigh = all_neigh.filter(pl.col("unique_id").cast(pl.Utf8).is_in(valid_uid_set))
@@ -253,13 +253,7 @@ def write_viz_outputs(
 
     # Base hood columns
     base_hood_cols = ["hood_id", "seqid", "start", "end", "align_gene"]
-    # Internal pipeline columns to exclude from hoods output
-    internal_cols = {
-        "sequence", "strand_win", "start_target", "end_target", "target_prot",
-        "temp_seqid", "is_full_contig", "start_win", "end_win", "unique_id",
-        "length", "seqid"  # seqid is in base_hood_cols
-    }
-    
+
     if all_neigh is not None and all_neigh.height > 0:
         neigh = all_neigh.clone()
         mapping = {
@@ -271,26 +265,29 @@ def write_viz_outputs(
         present_map = {k: v for k, v in mapping.items() if k in neigh.columns}
         if present_map:
             neigh = neigh.rename(present_map)
-        
+
         # Join with records to get user extra columns
         user_extra_cols = []
         if records is not None and records.height > 0:
             from hoodini.utils.validation import RESERVED_COLUMNS
+
             # Find user extra columns in records (not reserved, not starting with _)
-            user_extra_cols = [c for c in records.columns 
-                              if c not in RESERVED_COLUMNS 
-                              and not c.startswith("_")]
+            user_extra_cols = [
+                c for c in records.columns if c not in RESERVED_COLUMNS and not c.startswith("_")
+            ]
             if user_extra_cols and "hood_id" in neigh.columns:
                 # Join on unique_id (records) = hood_id (neigh after rename)
                 records_extra = records.select(["unique_id"] + user_extra_cols)
                 records_extra = records_extra.with_columns(pl.col("unique_id").cast(pl.Utf8))
                 neigh = neigh.with_columns(pl.col("hood_id").cast(pl.Utf8))
-                neigh = neigh.join(records_extra, left_on="hood_id", right_on="unique_id", how="left")
-        
+                neigh = neigh.join(
+                    records_extra, left_on="hood_id", right_on="unique_id", how="left"
+                )
+
         # Select base columns + user extra columns only
         cols = [c for c in base_hood_cols if c in neigh.columns]
         cols.extend([c for c in user_extra_cols if c in neigh.columns])
-        
+
         if cols:
             hoods_headers = "\t".join(cols) + "\n"
             csv_data = neigh.select(cols).write_csv(separator="\t", include_header=False)
