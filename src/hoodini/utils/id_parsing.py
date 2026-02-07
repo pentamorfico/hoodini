@@ -25,6 +25,9 @@ def categorize_id(id_: str) -> dict[str, str | None]:
     parts = id_.split(":")
     id_part = parts[0]
 
+    # UniParc IDs: UPI followed by 10 hex characters (e.g., UPI001CE3CA0A)
+    uniparc_pattern = re.compile(r"^UPI[0-9A-Fa-f]{10}$")
+
     uniprot_pattern = re.compile(
         r"^([OPQ][0-9][A-Z0-9]{3}[0-9]|"
         r"[A-NR-Z][0-9][A-Z][A-Z0-9]{2}[0-9]"
@@ -70,6 +73,8 @@ def categorize_id(id_: str) -> dict[str, str | None]:
         re.compile(r"^[A-Z]{3}\d{5,8}(\.\d+)?$"),
     ]
 
+    if re.match(uniparc_pattern, id_part):
+        return {"type": "uniparc", "id": id_part, "protein_id": None}
     if re.match(uniprot_pattern, id_part):
         return {"type": "uniprot", "id": id_part, "protein_id": None}
     if any(re.match(pattern, id_part) for pattern in nucleotide_patterns):

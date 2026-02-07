@@ -10,7 +10,7 @@ import polars as pl
 import rich_click as click
 
 from hoodini.utils.id_parsing import categorize_id
-from hoodini.utils.logging_utils import warn
+from hoodini.utils.logging_utils import info, warn
 
 # Reserved columns used internally by the pipeline - these should not be overwritten by user data
 RESERVED_COLUMNS = {
@@ -391,6 +391,9 @@ def read_input_list(filename):
         elif category["type"] == "uniprot":
             record["uniprot_id"] = category["id"]
             record["input_type"] = "protein"
+        elif category["type"] == "uniparc":
+            record["uniprot_id"] = category["id"]  # stored here, resolved later
+            record["input_type"] = "uniparc"
         elif category["type"] == "unmatched":
             record["failed"] = True
             record["failed_reason"] = "not valid ID"
@@ -407,14 +410,150 @@ def read_input_list(filename):
     return df
 
 
+def uniparc2ncbi(df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Resolve UniParc IDs (UPI...) directly to NCBI protein IDs.
+
+    Queries the UniProt REST API (``/uniparc/{upi}``) and extracts protein IDs
+    from active cross-references:
+
+    1. Prefers **RefSeq** (e.g. ``YP_232970``)
+    2. Falls back to **EMBL** (e.g. ``AAO89367``) if no active RefSeq entry
+
+    Sets ``protein_id`` directly — no intermediate UniProt KB lookup needed.
+    """
+    if "input_type" not in df.columns or "uniprot_id" not in df.columns:
+        return df
+
+    mask = df["input_type"] == "uniparc"
+    if mask.sum() == 0:
+        return df
+
+    upi_ids = df.filter(mask)["uniprot_id"].drop_nulls().unique().to_list()
+    if not upi_ids:
+        return df
+
+    import asyncio
+
+    import httpx
+
+    info(f"🔎 Resolving {len(upi_ids)} UniParc ID(s) via UniProt REST API (parallel)...")
+
+    upi_to_protein: dict[str, str] = {}
+    base_url = "https://rest.uniprot.org/uniparc"
+    MAX_CONCURRENT = 10  # be nice to the API
+
+    def _pick_protein_id(cross_refs: list[dict]) -> str | None:
+        """Pick the best protein ID from cross-references: RefSeq > EMBL.
+
+        Appends the version number (e.g. ``WP_292220451.1``) when available,
+        since downstream IPG lookups require versioned accessions.
+        """
+
+        def _versioned(xref: dict) -> str:
+            pid = xref["id"]
+            ver = xref.get("version")
+            if ver is not None and "." not in pid:
+                return f"{pid}.{ver}"
+            return pid
+
+        for xref in cross_refs:
+            if xref.get("database") == "RefSeq" and xref.get("active") is True:
+                return _versioned(xref)
+        for xref in cross_refs:
+            if xref.get("database") == "EMBL" and xref.get("active") is True:
+                return _versioned(xref)
+        return None
+
+    async def _fetch_one(
+        client: httpx.AsyncClient,
+        sem: asyncio.Semaphore,
+        upi: str,
+    ) -> tuple[str, str | None]:
+        async with sem:
+            try:
+                resp = await client.get(f"{base_url}/{upi}", params={"format": "json"})
+                resp.raise_for_status()
+                entry = resp.json()
+                xrefs = entry.get("uniParcCrossReferences", [])
+                return upi, _pick_protein_id(xrefs)
+            except Exception as e:
+                warn(f"⚠️  Failed to resolve {upi}: {e}")
+                return upi, None
+
+    async def _resolve_all() -> dict[str, str]:
+        sem = asyncio.Semaphore(MAX_CONCURRENT)
+        async with httpx.AsyncClient(timeout=30) as client:
+            tasks = [_fetch_one(client, sem, upi) for upi in upi_ids]
+            results = await asyncio.gather(*tasks)
+        return {upi: pid for upi, pid in results if pid is not None}
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import nest_asyncio
+
+        nest_asyncio.apply()
+
+    upi_to_protein = asyncio.run(_resolve_all())
+
+    if not upi_to_protein:
+        warn("Could not resolve any UniParc IDs. Marking them as failed.")
+        return df.with_columns(
+            pl.when(mask).then(pl.lit(True)).otherwise(pl.col("failed")).alias("failed"),
+            pl.when(mask)
+            .then(pl.lit("UniParc ID could not be resolved."))
+            .otherwise(pl.col("failed_reason"))
+            .alias("failed_reason"),
+        )
+
+    # Build mapping frame
+    map_df = pl.DataFrame(
+        {"upi": list(upi_to_protein.keys()), "resolved_id": list(upi_to_protein.values())}
+    )
+    df = df.join(map_df, left_on="uniprot_id", right_on="upi", how="left")
+
+    # Set protein_id directly and update input_type
+    df = df.with_columns(
+        pl.when(mask & pl.col("resolved_id").is_not_null())
+        .then(pl.col("resolved_id"))
+        .otherwise(pl.col("protein_id"))
+        .alias("protein_id"),
+        pl.when(mask & pl.col("resolved_id").is_not_null())
+        .then(pl.lit("protein"))
+        .otherwise(pl.col("input_type"))
+        .alias("input_type"),
+    ).drop("resolved_id")
+
+    # Mark unresolved UniParc IDs as failed
+    still_uniparc = df["input_type"] == "uniparc"
+    if still_uniparc.sum() > 0:
+        df = df.with_columns(
+            pl.when(still_uniparc).then(pl.lit(True)).otherwise(pl.col("failed")).alias("failed"),
+            pl.when(still_uniparc)
+            .then(pl.lit("UniParc ID could not be resolved to RefSeq or EMBL."))
+            .otherwise(pl.col("failed_reason"))
+            .alias("failed_reason"),
+        )
+
+    resolved = len(upi_to_protein)
+    info(f"✔️  Resolved {resolved}/{len(upi_ids)} UniParc IDs to protein IDs.")
+    return df
+
+
 def uniprot2ncbi(df: pl.DataFrame) -> pl.DataFrame:
     """
-    Map UniProt accessions to NCBI protein IDs using UniProtMapper.
+    Map UniProt accessions to NCBI protein IDs using a local parquet database.
+
+    Uses ``idmapping_selected.parquet`` (columns: UniprotKB-AC, RefSeq, EMBL-CDS).
+    Prefers the RefSeq mapping; falls back to EMBL-CDS when RefSeq is null.
 
     - Only attempts mapping for rows with `uniprot_id` present, `protein_id` null/empty,
       and no local files (`gff_path`/`faa_path` missing).
-    - If mapping returns multiple hits, merged `To` values are applied directly.
-    - On failure, sets the `failed` column with a descriptive message.
+    - On failure (no match found), sets the `failed` column with a descriptive message.
     """
     required_cols = {"uniprot_id", "protein_id", "gff_path", "faa_path"}
     if not required_cols.issubset(set(df.columns)):
@@ -432,32 +571,82 @@ def uniprot2ncbi(df: pl.DataFrame) -> pl.DataFrame:
     if mask.sum() == 0:
         return df
 
-    from UniProtMapper import ProtMapper
-
-    df_pd = df.to_pandas()
-    to_map = df_pd.loc[mask.to_pandas(), "uniprot_id"].dropna().unique().tolist()
+    to_map = df.filter(mask)["uniprot_id"].drop_nulls().unique().to_list()
     if not to_map:
         return df
 
-    mapper = ProtMapper()
-    try:
-        mapped_df, failed_ids = mapper.get(
-            ids=to_map, from_db="UniProtKB_AC-ID", to_db="EMBL-GenBank-DDBJ_CDS"
+    from hoodini.download.idmapping import get_idmapping_path
+
+    idmap_path = get_idmapping_path()
+    if not idmap_path.exists():
+        warn(
+            "ID-mapping database not found. "
+            "Run 'hoodini download databases' first. Marking UniProt entries as failed."
         )
-    except Exception:
-        failed_ids = to_map
-        mapped_df = None
-
-    if mapped_df is not None and not mapped_df.empty:
-        df_pd = df_pd.merge(
-            mapped_df[["From", "To"]], left_on="uniprot_id", right_on="From", how="left"
+        return df.with_columns(
+            pl.when(mask).then(pl.lit(True)).otherwise(pl.col("failed")).alias("failed"),
+            pl.when(mask)
+            .then(pl.lit("ID-mapping database not available."))
+            .otherwise(pl.col("failed_reason"))
+            .alias("failed_reason"),
         )
-        df_pd["protein_id"] = df_pd["protein_id"].fillna(df_pd["To"])
-        df_pd = df_pd.drop(columns=["From", "To"])
 
-    if failed_ids:
-        failed_mask = df_pd["uniprot_id"].isin(failed_ids)
-        df_pd.loc[failed_mask, "failed"] = True
-        df_pd.loc[failed_mask, "failed_reason"] = "No associated NCBI found for the UniProt entry."
+    # Use DuckDB for memory-efficient semi-join against the parquet
+    import duckdb
 
-    return pl.from_pandas(df_pd)
+    con = duckdb.connect(":memory:")
+    con.execute('SET memory_limit = "2GB"')
+
+    # Register the lookup IDs as a temp table
+    con.execute("CREATE TEMP TABLE lookup_ids (uniprot_ac VARCHAR)")
+    con.executemany("INSERT INTO lookup_ids VALUES (?)", [(uid,) for uid in to_map])
+
+    idmap = con.execute(
+        f"""
+        SELECT
+            m."UniprotKB-AC",
+            CASE
+                WHEN m."RefSeq" IS NOT NULL AND TRIM(m."RefSeq") != ''
+                    THEN m."RefSeq"
+                WHEN m."EMBL-CDS" IS NOT NULL AND TRIM(m."EMBL-CDS") != ''
+                    THEN m."EMBL-CDS"
+                ELSE NULL
+            END AS mapped_id
+        FROM read_parquet('{str(idmap_path)}') m
+        SEMI JOIN lookup_ids l ON m."UniprotKB-AC" = l.uniprot_ac
+        WHERE mapped_id IS NOT NULL
+        """
+    ).pl()
+
+    con.close()
+
+    # Keep first match per UniProt accession
+    idmap = idmap.unique(subset=["UniprotKB-AC"], keep="first")
+
+    # Join mapping onto the records
+    df = df.join(
+        idmap.select("UniprotKB-AC", "mapped_id"),
+        left_on="uniprot_id",
+        right_on="UniprotKB-AC",
+        how="left",
+    )
+
+    # Fill in protein_id from mapped_id where it was missing
+    df = df.with_columns(
+        pl.when(mask & pl.col("mapped_id").is_not_null())
+        .then(pl.col("mapped_id"))
+        .otherwise(pl.col("protein_id"))
+        .alias("protein_id")
+    ).drop("mapped_id")
+
+    # Mark rows that had a uniprot_id but could not be mapped
+    failed_mask = mask & df["protein_id"].cast(pl.Utf8, strict=False).is_null()
+    df = df.with_columns(
+        pl.when(failed_mask).then(pl.lit(True)).otherwise(pl.col("failed")).alias("failed"),
+        pl.when(failed_mask)
+        .then(pl.lit("No associated NCBI ID found for the UniProt entry."))
+        .otherwise(pl.col("failed_reason"))
+        .alias("failed_reason"),
+    )
+
+    return df

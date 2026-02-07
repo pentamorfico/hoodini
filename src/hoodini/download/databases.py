@@ -143,6 +143,7 @@ def main(
     skip_parquet: bool = False,
     skip_contig_lengths: bool = False,
     skip_typedive: bool = False,
+    skip_idmapping: bool = False,
     num_threads: int = 0,
 ):
     stage_header("Downloading databases and support files", "⬇️")
@@ -245,6 +246,17 @@ def main(
             warn(f"Failed to download type_dive databases: {e}")
     else:
         info(f"{data_dir / 'dive_combined.parquet'} exists; use --force to re-download")
+
+    # UniProt ID-mapping database
+    if skip_idmapping:
+        info("Skipping UniProt ID-mapping download (--skip-idmapping)")
+    else:
+        from hoodini.download.idmapping import download_idmapping, idmapping_db_exists
+
+        if force or not idmapping_db_exists():
+            download_idmapping(num_threads=num_threads)
+        else:
+            info("UniProt ID-mapping database already exists; use --force to re-download")
 
     stage_done("Databases download complete")
 

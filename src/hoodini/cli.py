@@ -403,6 +403,9 @@ def download_contig_lengths(api_key, skip_assembly_summary):
 )
 @click.option("--skip-typedive", is_flag=True, help="Skip downloading BacDive/PhageDive databases.")
 @click.option(
+    "--skip-idmapping", is_flag=True, help="Skip downloading UniProt ID-mapping database."
+)
+@click.option(
     "--threads",
     "num_threads",
     type=int,
@@ -418,6 +421,7 @@ def download_databases(
     skip_parquet,
     skip_contig_lengths,
     skip_typedive,
+    skip_idmapping,
     num_threads,
 ):
     """Download support databases used by some extra tools (emapper, PADLOC models, etc.)"""
@@ -432,6 +436,7 @@ def download_databases(
         skip_parquet=skip_parquet,
         skip_contig_lengths=skip_contig_lengths,
         skip_typedive=skip_typedive,
+        skip_idmapping=skip_idmapping,
         num_threads=num_threads,
     )
 

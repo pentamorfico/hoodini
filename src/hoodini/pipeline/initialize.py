@@ -10,7 +10,7 @@ from hoodini.models.schemas import RECORDS
 from hoodini.pipeline.helpers.single_query import prepare_single_query_input
 from hoodini.utils.logging_utils import error, info, warn
 from hoodini.utils.polars_adapters import to_polars
-from hoodini.utils.validation import read_input_list, read_input_sheet, uniprot2ncbi
+from hoodini.utils.validation import read_input_list, read_input_sheet, uniparc2ncbi, uniprot2ncbi
 
 
 def initialize_inputs(
@@ -52,6 +52,7 @@ def initialize_inputs(
 
     check_assembly_db()
     check_contig_lengths_db()
+    check_idmapping_db()
 
     if output:
         output_folder = Path(output)
@@ -95,7 +96,8 @@ def initialize_inputs(
         error("No input_path or inputsheet provided.")
         sys.exit(1)
 
-    records_pd = uniprot2ncbi(records_raw)
+    records_pd = uniparc2ncbi(records_raw)
+    records_pd = uniprot2ncbi(records_pd)
     records = to_polars(records_pd, schema=RECORDS)
 
     records = records.unique(subset=["og_index"], keep="first")
@@ -184,3 +186,20 @@ def check_contig_lengths_db() -> None:
 
     except Exception as e:
         error(f"Error checking or downloading contig lengths DB: {e}")
+
+
+def check_idmapping_db() -> None:
+    """Check if idmapping_selected.parquet exists and download if missing."""
+    try:
+        from hoodini.download.idmapping import download_idmapping, get_idmapping_path
+
+        idmap_path = get_idmapping_path()
+        if idmap_path.exists():
+            info(f"📁 UniProt ID-mapping DB found: {idmap_path}")
+            return
+
+        info("📭 No local UniProt ID-mapping database found. Downloading now...")
+        download_idmapping(idmap_path)
+
+    except Exception as e:
+        error(f"Error checking or downloading ID-mapping DB: {e}")
