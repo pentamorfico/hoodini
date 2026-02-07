@@ -36,6 +36,7 @@ dependencies = [
 	"tomli>=2.0.0",
 	"psutil>=5.9.0",
 	"duckdb>=0.9.0",
+	"uniprot-id-mapper>=0.1.0",
 ]
 
 [project.optional-dependencies]
@@ -197,6 +198,7 @@ alsa-lib = "*"
 
 [tool.pixi.pypi-dependencies]
 hoodini = { path = ".", editable = true }
+uniprot-id-mapper = "*"
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
