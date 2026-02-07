@@ -198,7 +198,6 @@ alsa-lib = "*"
 
 [tool.pixi.pypi-dependencies]
 hoodini = { path = ".", editable = true }
-uniprot-id-mapper = "*"
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
