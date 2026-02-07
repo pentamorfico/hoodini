@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import time
@@ -15,20 +16,22 @@ from hoodini.utils.logging_utils import error, info, warn
 from hoodini.utils.runtime_env import apply_ld_library_path
 
 UNIPROT_RE = re.compile(r"^[A-NR-Z][0-9][A-Z0-9]{3}[0-9](?:-[0-9]+)?$")
-VALID_MAX_SEQS = [10, 50, 100, 250, 500, 1000, 5000]
+VALID_MAX_SEQS_BLASTP = [10, 50, 100, 250, 500, 1000, 5000]
+VALID_MAX_SEQS_PSIBLAST = [10, 50, 100, 250, 500, 1000, 5000, 10000, 20000]
+PSI_BLAST_THRESHOLD = 5000
 
 
-def _pick_dropdown_value(max_targets: int) -> int:
+def _pick_dropdown_value(max_targets: int, use_psiblast: bool = False) -> int:
     """NCBI dropdown only allows specific target counts; pick the nearest above."""
-    for opt in VALID_MAX_SEQS:
+    valid = VALID_MAX_SEQS_PSIBLAST if use_psiblast else VALID_MAX_SEQS_BLASTP
+    for opt in valid:
         if max_targets <= opt:
             return opt
-    return VALID_MAX_SEQS[-1]
+    return valid[-1]
 
 
 def _extract_rid(text: str) -> str | None:
     """Extract RID from URL or HTML text."""
-    # Do NOT use this function; inline the regex instead
     match = re.search(r"[&?]RID=([A-Z0-9]+)", text)
     if match:
         return match.group(1)
@@ -55,7 +58,6 @@ def _fetch_fasta_for_id(prot_id: str) -> str:
         except Exception as e:
             warn(f"UniProt fetch error for {prot_id}: {e}")
 
-    # Fallback to NCBI efetch
     cmd = [
         "efetch",
         "-db",
@@ -82,75 +84,93 @@ def _run_remote_blast(
     max_targets: int,
     db: str = "nr_cluster_seq",
 ) -> list[str]:
-    """Run remote BLAST via NCBI using Playwright Firefox."""
-    dropdown_value = _pick_dropdown_value(max_targets)
+    """Run remote BLAST via NCBI using Playwright Firefox.
 
-    # Ensure Firefox is installed
+    Automatically switches to PSI-BLAST when ``max_targets`` exceeds 5000,
+    since NCBI blastp caps at 5000 while PSI-BLAST supports up to 20000.
+    """
+    use_psiblast = max_targets > PSI_BLAST_THRESHOLD
+    dropdown_value = _pick_dropdown_value(max_targets, use_psiblast=use_psiblast)
+    program_label = "PSI-BLAST" if use_psiblast else "BLASTp"
+
     if not ensure_playwright_firefox():
         error("❌ Could not install Playwright Firefox")
         return []
 
-    info("🚀 BLAST Search (Firefox + Playwright)")
+    info(f"🚀 {program_label} Search")
     info(f"   Query: {fasta_text[:50]}...")
     info(f"   Max sequences: {max_targets}")
     if dropdown_value != max_targets:
         info(f"   (using dropdown: {dropdown_value}, will limit download to {max_targets})")
     info(f"   E-value: {evalue}")
+    if use_psiblast:
+        info(f"   Using PSI-BLAST (max_targets > {PSI_BLAST_THRESHOLD})")
     info("")
 
-    # Set up environment for Playwright Firefox in conda/pixi/mamba
+    original_ld_path = os.environ.get("LD_LIBRARY_PATH")
     apply_ld_library_path()
 
+    try:
+        return _playwright_blast(fasta_text, evalue, max_targets, dropdown_value, use_psiblast)
+    finally:
+        if original_ld_path is None:
+            os.environ.pop("LD_LIBRARY_PATH", None)
+        else:
+            os.environ["LD_LIBRARY_PATH"] = original_ld_path
+
+
+def _playwright_blast(
+    fasta_text: str,
+    evalue: float,
+    max_targets: int,
+    dropdown_value: int,
+    use_psiblast: bool,
+) -> list[str]:
+    """Run the actual Playwright browser session for BLAST."""
     with sync_playwright() as p:
         browser = p.firefox.launch(headless=True)
         page = browser.new_page(viewport={"width": 1920, "height": 1080})
 
-        # 1. LOAD PAGE
         url = "https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE=Proteins"
         page.goto(url, wait_until="networkidle")
 
-        # 2. FILL SEQUENCE
+        if use_psiblast:
+            page.locator("text=PSI-BLAST (Position-Specific Iterated BLAST)").click()
+            time.sleep(0.5)
+
         textarea = page.locator('textarea[aria-label*="accession"]').or_(
             page.locator("textarea").first
         )
         textarea.wait_for(state="visible")
         textarea.fill(fasta_text)
 
-        # 3. EXPAND "Algorithm parameters" section
         algo_params = page.locator("text=Algorithm parameters").first
         algo_params.click()
         time.sleep(0.5)
 
-        # 4. SET MAX TARGET SEQUENCES (use dropdown_value)
         max_seqs_select = page.locator('select[name="MAX_NUM_SEQ"]')
         max_seqs_select.wait_for(state="visible")
         max_seqs_select.select_option(str(dropdown_value))
 
-        # 5. SET E-VALUE
         evalue_input = page.locator('input[name="EXPECT"]')
         evalue_input.fill(str(evalue))
 
-        # 6. CLICK BLAST BUTTON
         blast_btn = page.locator('#blastButton1 input[value="BLAST"]')
         blast_btn.wait_for(state="visible")
 
         with page.expect_navigation(timeout=60000, wait_until="commit"):
             blast_btn.click(no_wait_after=True)
 
-        # 7. EXTRACT RID
-        # Poll for RID availability (up to 30s)
         rid = None
         for attempt in range(10):
             time.sleep(3)
 
-            # Method 1: Get RID from URL parameter
             current_url = page.url
             match = re.search(r"[&?]RID=([A-Z0-9]+)", current_url)
             if match:
                 rid = match.group(1)
                 break
 
-            # Method 2: Fallback - look for "Request ID" in page
             content = page.content()
             match = re.search(r"Request ID[^A-Z0-9]*([A-Z0-9]{11,12})", content)
             if match:
@@ -159,15 +179,12 @@ def _run_remote_blast(
 
         if not rid:
             error("❌ Could not find RID")
-            # Debugging info
             info(f"debug: Current URL: {page.url}")
             info(f"debug: Page Title: {page.title()}")
-            # Dump a snippet of content to see what's wrong
             content_snippet = page.content()[:1000].replace("\n", " ")
             info(f"debug: Page Content Start: {content_snippet}...")
             return []
 
-        # 8. POLL FOR RESULTS
         rid_clean = rid[4:] if rid.startswith("RID-") else rid
 
         status_url = f"https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Get&RID={rid_clean}&FORMAT_OBJECT=SearchInfo"
@@ -188,17 +205,13 @@ def _run_remote_blast(
             error("⚠️ Timeout waiting for BLAST results.")
             return []
 
-        # 9. DOWNLOAD CSV (use dropdown_value to get all, then limit to max_targets)
         download_url = f"https://blast.ncbi.nlm.nih.gov/Blast.cgi?RESULTS_FILE=on&RID={rid_clean}&FORMAT_TYPE=CSV&DESCRIPTIONS={dropdown_value}&ALIGNMENT_VIEW=Tabular&CMD=Get"
 
         resp = requests.get(download_url)
         content = resp.text
 
-        # Parse and limit to max_targets
         all_lines = content.strip().split("\n")
         data_lines = [l for l in all_lines if l and not l.startswith("#")]
-
-        # Limit data lines to requested max_targets
         limited_lines = data_lines[:max_targets]
 
         hits = []
@@ -245,7 +258,6 @@ def prepare_single_query_input(
             unique_hits.append(h)
             seen.add(h)
 
-    # Include the query ID itself if not already present
     if not _looks_like_fasta(query) and query not in seen:
         unique_hits.insert(0, query)
 

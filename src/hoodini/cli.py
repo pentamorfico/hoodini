@@ -216,8 +216,8 @@ def cli():
 @click.option(
     "--remote-max-targets",
     "remote_max_targets",
-    type=int,
-    help="Maximum targets to retrieve in remote BLAST for single protein input.",
+    type=click.IntRange(1, 20000),
+    help="Maximum targets to retrieve in remote BLAST (max 20,000).",
 )
 @click.option("--padloc", is_flag=True, help="Run PADLOC for antiphage defense.")
 @click.option("--deffinder", is_flag=True, help="Run DefenseFinder for antiphage defense.")

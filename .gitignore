@@ -28,3 +28,4 @@ run.log
 .pixi/*
 !.pixi/config.toml
 tests/feature_coverage/outputs/
+src/hoodini/data/idmapping_selected.parquet
