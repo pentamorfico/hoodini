@@ -26,7 +26,7 @@ dependencies = [
 	"gb-io>=0.2.0",
 	"httpx",
 	"aiohttp",
-	"pyhmmer",
+	"pyhmmer<0.12",
 	"alphafetcher",
 	"jinja2",
 	"mappy",
@@ -142,10 +142,10 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 filterwarnings = ["ignore::DeprecationWarning"]
 markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests requiring network",
-    "unit: marks tests as fast unit tests",
-    "requires_db: marks tests requiring external databases (PADLOC, DefenseFinder)",
+	"slow: marks tests as slow (deselect with '-m \"not slow\"')",
+	"integration: marks tests as integration tests requiring network",
+	"unit: marks tests as fast unit tests",
+	"requires_db: marks tests requiring external databases (PADLOC, DefenseFinder)",
 ]
 
 [tool.pixi.workspace]
@@ -155,7 +155,7 @@ platforms = ["linux-64", "osx-arm64"]
 [tool.pixi.dependencies]
 python = "3.11.*"
 blast = "*"
-diamond = "!=2.1.19"
+diamond = ">=2.1.22"
 skani = "*"
 fastani = "*"
 padloc = ">=2.0"
