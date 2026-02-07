@@ -601,7 +601,8 @@ def uniprot2ncbi(df: pl.DataFrame) -> pl.DataFrame:
     con.execute("CREATE TEMP TABLE lookup_ids (uniprot_ac VARCHAR)")
     con.executemany("INSERT INTO lookup_ids VALUES (?)", [(uid,) for uid in to_map])
 
-    idmap = con.execute(f"""
+    idmap = con.execute(
+        f"""
         SELECT
             m."UniprotKB-AC",
             CASE
@@ -614,7 +615,8 @@ def uniprot2ncbi(df: pl.DataFrame) -> pl.DataFrame:
         FROM read_parquet('{str(idmap_path)}') m
         SEMI JOIN lookup_ids l ON m."UniprotKB-AC" = l.uniprot_ac
         WHERE mapped_id IS NOT NULL
-        """).pl()
+        """
+    ).pl()
 
     con.close()
 

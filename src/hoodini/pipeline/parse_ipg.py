@@ -171,11 +171,13 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
         con.execute("CREATE TEMP TABLE asm_lookup (assembly_id VARCHAR)")
         con.executemany("INSERT INTO asm_lookup VALUES (?)", [(a,) for a in assemblies_stripped])
 
-        ts = con.execute(f"""
+        ts = con.execute(
+            f"""
             SELECT d.*
             FROM read_parquet('{dive_path}') d
             WHERE d.assembly_id IN (SELECT assembly_id FROM asm_lookup)
-        """).pl()
+        """
+        ).pl()
         con.close()
 
         if ts.height > 0:
@@ -199,7 +201,8 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
         con.execute("CREATE TEMP TABLE asm_lookup2 (assembly_accession VARCHAR)")
         con.executemany("INSERT INTO asm_lookup2 VALUES (?)", [(a,) for a in assemblies])
 
-        summary = con.execute(f"""
+        summary = con.execute(
+            f"""
             SELECT 
                 assembly_accession,
                 taxid,
@@ -210,7 +213,8 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
                 "group"
             FROM read_parquet('{summary_path}')
             WHERE assembly_accession IN (SELECT assembly_accession FROM asm_lookup2)
-        """).pl()
+        """
+        ).pl()
         con.close()
 
         if summary.height > 0:
@@ -322,7 +326,8 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
         con.executemany("INSERT INTO lookup VALUES (?)", [(n,) for n in nucs])
 
         # Query parquet with semi-join - DuckDB handles this efficiently
-        result_df = con.execute(f"""
+        result_df = con.execute(
+            f"""
             SELECT nucleotide_id, assembly_id, sequence_length FROM (
                 SELECT genbankAccession as nucleotide_id,
                        assemblyAccession as assembly_id,
@@ -336,7 +341,8 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
                 FROM read_parquet('{contig_path}')
                 WHERE refseqAccession IN (SELECT nuc_id FROM lookup)
             )
-        """).pl()
+        """
+        ).pl()
 
         # Deduplicate
         nuc_map = result_df.unique(subset=["nucleotide_id"], keep="first")
@@ -374,7 +380,8 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
             con.execute("CREATE TEMP TABLE asm_lookup (assembly_id VARCHAR)")
             con.executemany("INSERT INTO asm_lookup VALUES (?)", [(a,) for a in asm_list])
 
-            asm_meta = con.execute(f"""
+            asm_meta = con.execute(
+                f"""
                 SELECT 
                     assembly_accession as assembly_id,
                     taxid,
@@ -385,7 +392,8 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
                     "group"
                 FROM read_parquet('{summary_path}')
                 WHERE assembly_accession IN (SELECT assembly_id FROM asm_lookup)
-            """).pl()
+            """
+            ).pl()
             con.close()
 
             if asm_meta.height > 0:
@@ -451,14 +459,16 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
                             "INSERT INTO new_asm_lookup VALUES (?)", [(a,) for a in new_asm_list]
                         )
 
-                        summary2 = con.execute(f"""
+                        summary2 = con.execute(
+                            f"""
                             SELECT 
                                 assembly_accession as assembly_id,
                                 taxid,
                                 "group"
                             FROM read_parquet('{summary_path}')
                             WHERE assembly_accession IN (SELECT assembly_id FROM new_asm_lookup)
-                        """).pl()
+                        """
+                        ).pl()
                         con.close()
 
                         if summary2.height > 0:
