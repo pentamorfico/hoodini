@@ -252,7 +252,16 @@ def write_viz_outputs(
         empty.write_parquet(parquet_dir / "gff.parquet")
 
     # Base hood columns
-    base_hood_cols = ["hood_id", "seqid", "start", "end", "align_gene"]
+    base_hood_cols = [
+        "hood_id",
+        "seqid",
+        "start",
+        "end",
+        "align_gene",
+        "align_start",
+        "align_end",
+        "align_strand",
+    ]
 
     if all_neigh is not None and all_neigh.height > 0:
         neigh = all_neigh.clone()
@@ -265,6 +274,25 @@ def write_viz_outputs(
         present_map = {k: v for k, v in mapping.items() if k in neigh.columns}
         if present_map:
             neigh = neigh.rename(present_map)
+
+        # Join with records to get alignment inputs (start/end/strand) if provided
+        if records is not None and records.height > 0 and "hood_id" in neigh.columns:
+            align_map = {}
+            if "start" in records.columns:
+                align_map["start"] = "align_start"
+            if "end" in records.columns:
+                align_map["end"] = "align_end"
+            if "strand" in records.columns:
+                align_map["strand"] = "align_strand"
+            if align_map:
+                records_align = records.select(["unique_id"] + list(align_map.keys())).rename(
+                    align_map
+                )
+                records_align = records_align.with_columns(pl.col("unique_id").cast(pl.Utf8))
+                neigh = neigh.with_columns(pl.col("hood_id").cast(pl.Utf8))
+                neigh = neigh.join(
+                    records_align, left_on="hood_id", right_on="unique_id", how="left"
+                )
 
         # Join with records to get user extra columns
         user_extra_cols = []
