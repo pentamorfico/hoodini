@@ -67,6 +67,7 @@ class RuntimeConfig:
     deffinder: bool = False
     ncrna: str | None = None
     cctyper: bool = False
+    trna: bool = False
     genomad: bool = False
     sorfs: bool = False
     domains: list[str] | None = field(default=None)

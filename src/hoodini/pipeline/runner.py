@@ -542,6 +542,35 @@ def _run_pipeline_stages(config: RuntimeConfig, tracker) -> None:
                 )
                 all_gff = pl.concat([all_gff, gff_df], how="vertical")
 
+        if config.trna:
+            from hoodini.extra_tools.trna import run_trna
+
+            trna_data = run_trna(all_neigh, den_data, config.output, config.num_threads, valid_uids)
+            if trna_data.height > 0:
+                gff_df = trna_data.select(
+                    [
+                        pl.col("nucid").alias("seqid"),
+                        pl.lit("hoodini").alias("source"),
+                        pl.lit("ncRNA").alias("type"),
+                        pl.min_horizontal([pl.col("start"), pl.col("end")]).alias("start"),
+                        pl.max_horizontal([pl.col("start"), pl.col("end")]).alias("end"),
+                        pl.lit(".").alias("score"),
+                        pl.col("strand_ncrna").alias("strand"),
+                        pl.lit(".").alias("phase"),
+                        (pl.lit("ID=") + pl.col("nc_feature") + pl.lit(";")).alias("attributes"),
+                    ]
+                )
+                all_gff = pl.concat([all_gff, gff_df], how="vertical")
+                # Merge tRNA results into ncrna_data for unified metadata output
+                if ncrna_data is not None and ncrna_data.height > 0:
+                    shared = list(set(ncrna_data.columns) & set(trna_data.columns))
+                    ncrna_data = pl.concat(
+                        [ncrna_data.select(shared), trna_data.select(shared)],
+                        how="vertical_relaxed",
+                    )
+                else:
+                    ncrna_data = trna_data
+
         if config.genomad:
             from hoodini.extra_tools.genomad import run_genomad
 

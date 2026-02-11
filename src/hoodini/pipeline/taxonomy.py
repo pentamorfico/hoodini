@@ -4,7 +4,6 @@ import warnings
 from collections.abc import Iterable
 from pathlib import Path
 
-warnings.filterwarnings("ignore", category=UserWarning, module="UniProtMapper")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy.core.getlimits")
 
 import numpy as np  # noqa: E402
@@ -13,7 +12,6 @@ from alphafetcher import AlphaFetcher  # noqa: E402
 from ete3 import NCBITaxa  # noqa: E402
 from scipy.cluster import hierarchy  # noqa: E402
 from scipy.spatial.distance import pdist, squareform  # noqa: E402
-from UniProtMapper import ProtMapper  # noqa: E402
 
 from hoodini.utils.logging_utils import console, success  # noqa: E402
 from hoodini.utils.seq_io import read_fasta, to_fasta  # noqa: E402
@@ -776,8 +774,9 @@ def _make_foldmason_tree(records, all_prot, output_dir, threads):
 
     Priority for UniProt ID resolution:
     1. Use existing uniprot_id from input (preserved from inputsheet)
-    2. Map NCBI protein_id → UniProt using ProtMapper
+    2. Map NCBI protein_id → UniProt using local idmapping parquet DB
     """
+    from hoodini.download.idmapping import get_idmapping_path
     from hoodini.utils.logging_utils import info, warn
 
     # Normalize inputs to Polars for consistency through the pipeline
@@ -807,27 +806,51 @@ def _make_foldmason_tree(records, all_prot, output_dir, threads):
     # Get all target protein IDs
     targets = valid.select("protein_id").drop_nulls().unique().to_series().to_list()
 
-    # Priority 2: Map remaining proteins without uniprot_id
+    # Priority 2: Map remaining proteins without uniprot_id via local parquet DB
     needs_mapping = [t for t in targets if t not in existing_uniprot]
 
-    mapped_from_api = {}
+    mapped_from_db = {}
 
     if needs_mapping:
-        info(f"Mapping {len(needs_mapping)} proteins to UniProt via API...")
-        mapper = ProtMapper()
-        try:
-            mapped_pd, _ = mapper.get(
-                ids=needs_mapping, from_db="EMBL-GenBank-DDBJ_CDS", to_db="UniProtKB"
+        idmap_path = get_idmapping_path()
+        if idmap_path.exists():
+            info(f"Mapping {len(needs_mapping)} proteins to UniProt via local ID-mapping DB...")
+            try:
+                import duckdb
+
+                con = duckdb.connect(":memory:")
+                con.execute('SET memory_limit = "2GB"')
+                con.execute("CREATE TEMP TABLE lookup_ids (ncbi_id VARCHAR)")
+                con.executemany(
+                    "INSERT INTO lookup_ids VALUES (?)", [(pid,) for pid in needs_mapping]
+                )
+
+                # Reverse lookup: NCBI protein_id → UniProt accession
+                # Match against RefSeq and EMBL-CDS columns
+                result = con.execute(
+                    f"""
+                    SELECT l.ncbi_id, m."UniprotKB-AC"
+                    FROM lookup_ids l
+                    JOIN read_parquet('{str(idmap_path)}') m
+                      ON l.ncbi_id = m."RefSeq"
+                      OR l.ncbi_id = m."EMBL-CDS"
+                    """
+                ).pl()
+                con.close()
+
+                for row in result.iter_rows(named=True):
+                    if row["ncbi_id"] and row["UniprotKB-AC"]:
+                        mapped_from_db[row["ncbi_id"]] = row["UniprotKB-AC"]
+            except Exception as e:
+                warn(f"UniProt mapping via local DB failed: {e}")
+        else:
+            warn(
+                "ID-mapping database not found. "
+                "Run 'hoodini download databases' to enable NCBI→UniProt mapping."
             )
 
-            if mapped_pd is not None and not mapped_pd.empty:
-                for _, row in mapped_pd.iterrows():
-                    mapped_from_api[row["From"]] = row["Entry"]
-        except Exception as e:
-            warn(f"UniProt mapping failed: {e}")
-
     # Combine mappings (existing takes priority)
-    protein_to_uniprot = {**mapped_from_api, **existing_uniprot}  # existing overwrites
+    protein_to_uniprot = {**mapped_from_db, **existing_uniprot}  # existing overwrites
 
     # Proteins that have UniProt IDs (either from input or mapped)
     proteins_with_uniprot = [t for t in targets if t in protein_to_uniprot]

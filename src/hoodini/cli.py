@@ -77,6 +77,7 @@ click.rich_click.OPTION_GROUPS = {
                 "--padloc",
                 "--deffinder",
                 "--cctyper",
+                "--trna",
                 "--ncrna",
                 "--genomad",
                 "--sorfs",
@@ -228,6 +229,7 @@ def cli():
     help="ncRNA prediction: path to CM file OR comma-separated RFAM IDs (e.g., RF00001,RF00234).",
 )
 @click.option("--cctyper", is_flag=True, help="Run CCtyper for CRISPR-Cas prediction.")
+@click.option("--trna", is_flag=True, help="Run tRNA/tmRNA detection with pyaragorn (ARAGORN).")
 @click.option("--genomad", is_flag=True, help="Run GenoMAD for MGE identification.")
 @click.option("--sorfs", is_flag=True, help="Reannotate small open reading frames.")
 @click.option(

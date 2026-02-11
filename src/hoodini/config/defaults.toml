@@ -44,6 +44,8 @@ deffinder = false
 ncrna = false
 # --cctyper (flag)
 cctyper = false
+# --trna (flag)
+trna = false
 # --genomad (flag)
 genomad = false
 # --sorfs (flag)

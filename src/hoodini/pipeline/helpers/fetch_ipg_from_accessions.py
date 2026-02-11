@@ -145,7 +145,7 @@ def fetch_ipg_from_accessions(accessions: list[str]) -> pl.DataFrame:
     if not dfs:
         return pl.DataFrame()
 
-    return pl.concat(dfs, how="vertical")
+    return pl.concat(dfs, how="vertical_relaxed")
 
 
 def main():
