@@ -154,6 +154,7 @@ platforms = ["linux-64", "osx-arm64"]
 
 [tool.pixi.dependencies]
 python = "3.11.*"
+pyhmmer = "<0.12"
 blast = "*"
 diamond = ">=2.1.22"
 skani = "*"
