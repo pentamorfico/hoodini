@@ -262,10 +262,17 @@ def _build_leaf_metadata(records: pl.DataFrame, all_neigh: pl.DataFrame) -> pl.D
         row = {"taxid": str(taxid)}
         tid = taxid_str_to_int.get(str(taxid))
         lineage = lineage_map.get(tid, []) if tid else []
+        domain = None
         for ltid in lineage:
             rank_name = all_ranks.get(ltid, "")
             if rank_name in taxcols:
                 row[rank_name] = all_names.get(ltid, "")
+            elif rank_name == "domain":
+                domain = all_names.get(ltid)
+        # Retain the legacy output column and prefer an explicit superkingdom.
+        # Newer NCBI lineages use domain for cellular organisms.
+        if not row.get("superkingdom") and domain:
+            row["superkingdom"] = domain
         for c in taxcols:
             row.setdefault(c, None)
         tax_rows.append(row)

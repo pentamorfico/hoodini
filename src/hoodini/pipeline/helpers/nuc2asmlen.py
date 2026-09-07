@@ -4,6 +4,8 @@ from importlib.resources import files
 
 import polars as pl
 
+from hoodini.utils.contig_metadata import register_contig_table, scan_contig_table
+
 
 def run_nuc2asmlen(accessions):
     """
@@ -34,39 +36,38 @@ def run_nuc2asmlen(accessions):
     try:
         import duckdb
 
-        con = duckdb.connect(":memory:")
-        con.execute('SET memory_limit = "4GB"')
+        with duckdb.connect(":memory:") as con:
+            con.execute('SET memory_limit = "4GB"')
+            register_contig_table(con, parquet_path)
 
-        # Create temp table for lookup IDs
-        con.execute("CREATE TEMP TABLE lookup (nuc_id VARCHAR)")
-        con.executemany("INSERT INTO lookup VALUES (?)", [(a,) for a in query_accessions])
+            # Create temp table for lookup IDs
+            con.execute("CREATE TEMP TABLE lookup (nuc_id VARCHAR)")
+            con.executemany("INSERT INTO lookup VALUES (?)", [(a,) for a in query_accessions])
 
-        # Query with efficient semi-join
-        matches = con.execute(
-            f"""
-            SELECT 
-                genbankAccession,
-                refseqAccession,
-                assemblyAccession,
-                length
-            FROM read_parquet('{parquet_path}')
-            WHERE genbankAccession IN (SELECT nuc_id FROM lookup)
-               OR refseqAccession IN (SELECT nuc_id FROM lookup)
-        """
-        ).pl()
-
-        con.close()
+            # Query with efficient semi-join
+            matches = con.execute(
+                """
+                SELECT
+                    genbankAccession,
+                    refseqAccession,
+                    assemblyAccession,
+                    length
+                FROM hoodini_contigs
+                WHERE genbankAccession IN (SELECT nuc_id FROM lookup)
+                   OR refseqAccession IN (SELECT nuc_id FROM lookup)
+                """
+            ).pl()
 
     except Exception:
         # Fallback to Polars if DuckDB fails
-        df_lazy = pl.scan_parquet(parquet_path)
+        df_lazy = scan_contig_table(parquet_path)
         matches = (
             df_lazy.filter(
                 pl.col("genbankAccession").is_in(query_accessions)
                 | pl.col("refseqAccession").is_in(query_accessions)
             )
             .select(["genbankAccession", "refseqAccession", "assemblyAccession", "length"])
-            .collect()
+            .collect(streaming=True)
         )
 
     ref_matches = matches.filter(
