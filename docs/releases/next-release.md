@@ -114,6 +114,32 @@ the parsers or database engines under test.
 
 ## Next implementation batch
 
+### Assembly-summary diagnosis (2026-09-07)
+
+- This parser is not fixed by the first batch. The #86 changes concern the
+  separate contig metadata table; the #81 fix concerns taxonomic rank mapping.
+- The current assembly-summary parser infers CSV types from 1,000 rows. A local
+  synthetic input with numeric values in that sample and later text reproduces
+  the reported class of error (text `bacteria` parsed as Int64). This reproduces
+  the mechanism, not the exact cause in the reporter's NCBI file. Null-only
+  samples did not reproduce the error with the tested Polars version.
+- NCBI documented the addition of columns 24 through 38 in June 2023. That
+  documented layout places `group` at column 25 and `genome_size` at column 26.
+  The reported text in `column_26` therefore also warrants checking for a
+  misaligned row/header or a newer layout. Do not assume a recent NCBI format
+  change, or treat an all-string parse as sufficient validation.
+- The current raw NCBI file/header could not be retrieved in this environment
+  (web retrieval failed; the direct HTTPS request timed out). The exact failing
+  download and row are still needed to distinguish inference from misalignment.
+- The parser currently catches file-level errors, deletes failed source files,
+  and can write a database using only the successfully parsed sources. This
+  must be corrected alongside schema handling to avoid incomplete updates.
+- Intended fix: resolve fields by each file's header; assign named field types;
+  validate required fields and numeric conversions; retain useful diagnostics;
+  replace the existing Parquet only after every requested source succeeds.
+- Sources: [NCBI assembly-report changes (2023)](https://ncbiinsights.ncbi.nlm.nih.gov/2023/06/07/assembly_reports-genome_reports-ftp/)
+  and [NCBI taxonomy rank changes (2025)](https://ncbiinsights.ncbi.nlm.nih.gov/2025/02/27/new-ranks-ncbi-taxonomy/).
+
 1. Reproduce the assembly-summary parsing failure reported in #81's comment and
    add stable schema handling without silently publishing incomplete summaries.
 2. Inspect #57 and #75 together using a real Conda environment and the Colab
