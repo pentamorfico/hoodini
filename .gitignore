@@ -6,6 +6,7 @@ commit_contig_lengths.py
 src/hoodini/data/metacerberus/*
 src/hoodini/data/metacerberus/**
 src/hoodini/data/assembly_summary.parquet
+src/hoodini/data/assembly-summary-update-*/
 src/hoodini/data/emapper/*
 src/hoodini/data/emapper/**
 src/hoodini/data/genomad_db/*
