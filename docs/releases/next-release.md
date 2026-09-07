@@ -23,7 +23,7 @@ features remain candidates, not promised release content.
 | [#83](https://github.com/pentamorfico/hoodini/issues/83) | Multi-contig GFF selection | Implemented and regression-tested on this branch. Full-pipeline release check remains. |
 | [#84](https://github.com/pentamorfico/hoodini/issues/84) | Mixed GBFF and GFF/FAA types | Implemented and regression-tested with real GFF/FAA and GBFF fixtures. |
 | [#86](https://github.com/pentamorfico/hoodini/issues/86) | Heterogeneous contig Parquet schemas | Implemented and regression-tested across reader, updater and writer paths. Large-dataset validation remains. |
-| [#81](https://github.com/pentamorfico/hoodini/issues/81) | NCBI domain taxonomy | Short-term compatibility fix implemented and regression-tested. Canonical-field migration and the assembly-summary parsing error in a comment remain separate work. |
+| [#81](https://github.com/pentamorfico/hoodini/issues/81) | NCBI domain taxonomy | Legacy-field compatibility and separate assembly-summary parser/update hardening implemented and regression-tested. Canonical-field migration and validation with the exact failing NCBI input remain. |
 | [#57](https://github.com/pentamorfico/hoodini/issues/57) | Optional database setup on later runs | Pending: inspect launcher and pipeline checks, including Colab. |
 | [#75](https://github.com/pentamorfico/hoodini/issues/75) | DefenseFinder / CasFinder compatibility | Pending: verify installed tool and model compatibility before choosing constraints. |
 | [#49](https://github.com/pentamorfico/hoodini/issues/49) | Run parameters in HTML | Pending: persist effective parameters and display them in the output. |
@@ -74,6 +74,34 @@ features remain candidates, not promised release content.
   the reported issues. Two additional selection guards were added afterward.
 - Updated the user-facing Unreleased changelog with the implemented behavior.
 
+### 2026-09-07: assembly-summary parsing and update integrity
+
+- Replaced sample-based CSV type inference with explicit types keyed by each
+  report's header. Accept a space after `#`, reordered columns and different
+  optional schemas in current/historical reports. Preserve text fields such as
+  isolate and PubMed lists even when their first values look numeric.
+- Validate header uniqueness, exact row widths, nonempty reports, accession
+  identifiers and numeric conversions. Missing selected optional columns receive
+  typed nulls; malformed records fail instead of being silently repaired.
+- Row-width validation performs an additional sequential read of each TSV with
+  bounded memory and reports physical line numbers. Large-file runtime has not
+  been benchmarked.
+- Download every requested report into a unique directory beside the destination.
+  Replace the Parquet atomically only after all requested reports and the staged
+  Parquet write succeed. Default updates require all four current/historical
+  RefSeq/GenBank sources. Retain failed downloads and log their directory for
+  inspection; ignore default staging directories in Git.
+- Propagate initial assembly-summary setup failures so initialization stops before
+  other database checks or forced removal of existing results. Load the single
+  query helper only when a literal query needs it.
+- Added 20 regression cases. The first 19 all failed against the original code;
+  after implementation they passed. Added an initialization guard as the final
+  case. Coverage includes a late text value after 1,100 numeric-looking values,
+  incomplete downloads, malformed rows and a simulated partial Parquet write.
+- These fixtures reproduce the inference mechanism and unsafe update behavior.
+  They do not establish the exact cause of the reporter's `column_26` failure;
+  the original failing NCBI file still needs validation.
+
 ### Execution environment and publication notes
 
 - Local Git clone succeeded; terminal push lacked GitHub credentials. Repository
@@ -97,11 +125,13 @@ features remain candidates, not promised release content.
 
 | Check | Result |
 | --- | --- |
-| `pytest tests/unit tests/integration -o addopts='' -q --tb=short --disable-warnings` | 65 passed, 5 skipped. The five existing skips require contig or assembly-summary databases. |
-| New regression cases | 30 passed (11 neighborhood, 7 taxonomy, 12 contig metadata). |
-| Black and isort on the nine changed/new Python files | Passed. |
+| `pytest tests/unit tests/integration -o addopts='' -q --tb=short --disable-warnings` | 85 passed, 5 skipped after the assembly-summary batch (first batch: 65 passed). The five existing skips require contig or assembly-summary databases. |
+| New regression cases | 50 passed (11 neighborhood, 7 taxonomy, 12 contig metadata, 20 assembly summary/initialization). |
+| Black and isort | Passed on the nine first-batch Python files and the three assembly-summary batch files. |
 | Ruff on the four new Python files | Passed. |
 | Ruff on the five modified Python files | Seven PLR0917 diagnostics, identical in count and rule to the original files at the starting commit. Pre-existing lint debt remains; the lint gate is not claimed to pass. |
+| Ruff on the three assembly-summary batch files | Passed. |
+| GitHub CI on commit `3f0a16ff65e0ad578705c7beae4b506d8a8a02ac` | Failed in Ruff with 19 PLR0917 diagnostics across the repository. Later checks, including pytest, were skipped. Local pytest results do not imply a green CI run. |
 | `git diff --check` | Passed. |
 | Full Conda/Bioconda pipeline, live NCBI access, large-database performance | Not run; required before release. |
 | Minimum supported Python/dependency versions | Not run locally; current-version results do not establish lower-bound compatibility. |
@@ -110,15 +140,18 @@ The GFF regression uses an actual GBFF written by Biopython and read by gb-io.
 Contig tests exercise actual DuckDB/Polars queries and Parquet I/O, both partition
 orders, optional columns absent from an entire dataset, forced Polars fallback,
 pipeline enrichment and incremental writing. No synthetic test stubs replace
-the parsers or database engines under test.
+the parsers or database engines under test. Assembly-summary tests mock only the
+download boundary and use actual TSV parsing and Parquet I/O, except for the
+deliberate disk-write failure simulation. They assert byte-for-byte preservation
+of the previous database and retention of the failed source files.
 
 ## Next implementation batch
 
 ### Assembly-summary diagnosis (2026-09-07)
 
-- This parser is not fixed by the first batch. The #86 changes concern the
+- This parser was not fixed by the first batch. The #86 changes concern the
   separate contig metadata table; the #81 fix concerns taxonomic rank mapping.
-- The current assembly-summary parser infers CSV types from 1,000 rows. A local
+- The original assembly-summary parser inferred CSV types from 1,000 rows. A local
   synthetic input with numeric values in that sample and later text reproduces
   the reported class of error (text `bacteria` parsed as Int64). This reproduces
   the mechanism, not the exact cause in the reporter's NCBI file. Null-only
@@ -131,17 +164,17 @@ the parsers or database engines under test.
 - The current raw NCBI file/header could not be retrieved in this environment
   (web retrieval failed; the direct HTTPS request timed out). The exact failing
   download and row are still needed to distinguish inference from misalignment.
-- The parser currently catches file-level errors, deletes failed source files,
-  and can write a database using only the successfully parsed sources. This
-  must be corrected alongside schema handling to avoid incomplete updates.
-- Intended fix: resolve fields by each file's header; assign named field types;
-  validate required fields and numeric conversions; retain useful diagnostics;
-  replace the existing Parquet only after every requested source succeeds.
+- The original parser caught file-level errors, deleted failed source files,
+  and could write a database using only the successfully parsed sources. The
+  assembly-summary batch above corrects this alongside schema handling.
+- Implemented fix: resolve fields by each file's header; assign named field types;
+  validate accession identifiers, row widths and numeric conversions; retain useful
+  diagnostics; replace the existing Parquet only after every requested source succeeds.
 - Sources: [NCBI assembly-report changes (2023)](https://ncbiinsights.ncbi.nlm.nih.gov/2023/06/07/assembly_reports-genome_reports-ftp/)
   and [NCBI taxonomy rank changes (2025)](https://ncbiinsights.ncbi.nlm.nih.gov/2025/02/27/new-ranks-ncbi-taxonomy/).
 
-1. Reproduce the assembly-summary parsing failure reported in #81's comment and
-   add stable schema handling without silently publishing incomplete summaries.
+1. Validate the assembly-summary changes with the exact failing NCBI report and
+   current full downloads; inspect its header and row if `column_26` still fails.
 2. Inspect #57 and #75 together using a real Conda environment and the Colab
    launcher, then test tool/model compatibility and optional database setup.
 3. Add run provenance in the generated HTML (#49), excluding API keys.
@@ -151,6 +184,7 @@ the parsers or database engines under test.
 ## Release checklist
 
 - [x] Complete and regression-test the first data-correctness batch.
+- [x] Implement and regression-test assembly-summary parsing and atomic updates.
 - [x] Review additional release scope against the issue inventory.
 - [ ] Run the full Conda/Bioconda pipeline with representative local and downloaded data.
 - [ ] Verify viewer changes in the generated standalone HTML, if included.

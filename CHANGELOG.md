@@ -22,6 +22,13 @@ Unreleased describe changes implemented on the update branch, not a published re
 - NCBI lineages using `domain` now populate the legacy `superkingdom` output field,
   avoiding false unclassified labels for Bacteria and Archaea. An explicit
   `superkingdom` takes priority when both ranks are present. (#81)
+- Assembly summaries now use explicit field types from each file's named header,
+  accepting reordered columns and different optional fields in current and
+  historical reports. Malformed rows and invalid numeric values stop the update
+  with diagnostics. The existing database is replaced only after all requested
+  downloads, parsing and Parquet writing succeed; failed inputs are retained for
+  inspection. A failed initial download also stops pipeline initialization.
+  (Assembly-summary error reported in a comment on #81.)
 
 See the [release work log](docs/releases/next-release.md) for validation evidence,
 remaining release checks and the full issue inventory.

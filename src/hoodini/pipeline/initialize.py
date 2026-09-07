@@ -7,7 +7,6 @@ from pathlib import Path
 import polars as pl
 
 from hoodini.models.schemas import RECORDS
-from hoodini.pipeline.helpers.single_query import prepare_single_query_input
 from hoodini.utils.logging_utils import error, info, warn
 from hoodini.utils.polars_adapters import to_polars
 from hoodini.utils.validation import read_input_list, read_input_sheet, uniparc2ncbi, uniprot2ncbi
@@ -77,6 +76,8 @@ def initialize_inputs(
 
     # If input_path is a literal (not a file), build a temp list inside the output folder.
     if input_path and not Path(input_path).exists():
+        from hoodini.pipeline.helpers.single_query import prepare_single_query_input
+
         temp_input = prepare_single_query_input(
             str(input_path),
             output_folder,
@@ -142,6 +143,7 @@ def check_assembly_db() -> None:
             return
     except Exception as e:
         error(f"Error checking or downloading assembly DB: {e}")
+        raise
 
 
 def check_contig_lengths_db() -> None:
