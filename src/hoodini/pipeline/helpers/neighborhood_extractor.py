@@ -186,10 +186,11 @@ def parse_gff_faa(gff_path: str, faa_path: str) -> pl.DataFrame:
             separator="\t",
             has_header=False,
             new_columns=gff_header,
-            skip_rows_after_header=0,
+            comment_prefix="#",
+            schema={
+                name: pl.Int64 if name in {"start", "end"} else pl.Utf8 for name in gff_header
+            },
         )
-        if gff.height > 0 and "seqid" in gff.columns:
-            gff = gff.filter(~pl.col("seqid").str.starts_with("#"))
     except Exception as e:
         raise NeighborhoodExtractionError(f"Failed to read GFF file {gff_path}: {e}")
 
@@ -467,14 +468,26 @@ def extract_neighborhood(
             sequence_length = len(sequence_bytes)
         elif gff_file and faa_file:
             features_df = parse_gff_faa(gff_file, faa_file)
-            record_version = nucleotide_id or "unknown"
+            if not nucleotide_id:
+                candidates = features_df
+                if protein_id:
+                    candidates = candidates.filter(pl.col("protein_id") == protein_id)
+                contigs = candidates["seqid"].drop_nulls().unique().to_list()
+                if len(contigs) != 1:
+                    raise NeighborhoodExtractionError(
+                        "Cannot select a unique GFF contig; provide nucleotide_id "
+                        "or a protein_id found on exactly one contig"
+                    )
+                nucleotide_id = contigs[0]
+            features_df = features_df.filter(pl.col("seqid") == nucleotide_id)
+            if features_df.is_empty():
+                raise NeighborhoodExtractionError(
+                    f"Nucleotide {nucleotide_id} not found in GFF features"
+                )
+            record_version = nucleotide_id
             if fna_file and Path(fna_file).exists():
                 fna_df = _read_fasta(fna_file)
-                seq_match = (
-                    fna_df.filter(pl.col("id") == nucleotide_id)
-                    if nucleotide_id
-                    else fna_df.head(1)
-                )
+                seq_match = fna_df.filter(pl.col("id") == nucleotide_id)
                 if seq_match.height > 0:
                     sequence_str = seq_match.row(0, named=True)["sequence"]
                     sequence_bytes = sequence_str.encode("utf-8")

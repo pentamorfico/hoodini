@@ -20,10 +20,10 @@ features remain candidates, not promised release content.
 
 | Issue | Scope | Status / next action |
 | --- | --- | --- |
-| [#83](https://github.com/pentamorfico/hoodini/issues/83) | Multi-contig GFF selection | In progress: isolate the requested contig before window extraction. |
-| [#84](https://github.com/pentamorfico/hoodini/issues/84) | Mixed GBFF and GFF/FAA types | In progress: normalize GFF fields and test mixed inputs. |
-| [#86](https://github.com/pentamorfico/hoodini/issues/86) | Heterogeneous contig Parquet schemas | In progress: normalize readers and writer, including absent optional columns. |
-| [#81](https://github.com/pentamorfico/hoodini/issues/81) | NCBI domain taxonomy | In progress: accept domain while preserving legacy output. The assembly-summary parsing error in a comment needs separate evaluation. |
+| [#83](https://github.com/pentamorfico/hoodini/issues/83) | Multi-contig GFF selection | Implemented and regression-tested on this branch. Full-pipeline release check remains. |
+| [#84](https://github.com/pentamorfico/hoodini/issues/84) | Mixed GBFF and GFF/FAA types | Implemented and regression-tested with real GFF/FAA and GBFF fixtures. |
+| [#86](https://github.com/pentamorfico/hoodini/issues/86) | Heterogeneous contig Parquet schemas | Implemented and regression-tested across reader, updater and writer paths. Large-dataset validation remains. |
+| [#81](https://github.com/pentamorfico/hoodini/issues/81) | NCBI domain taxonomy | Short-term compatibility fix implemented and regression-tested. Canonical-field migration and the assembly-summary parsing error in a comment remain separate work. |
 | [#57](https://github.com/pentamorfico/hoodini/issues/57) | Optional database setup on later runs | Pending: inspect launcher and pipeline checks, including Colab. |
 | [#75](https://github.com/pentamorfico/hoodini/issues/75) | DefenseFinder / CasFinder compatibility | Pending: verify installed tool and model compatibility before choosing constraints. |
 | [#49](https://github.com/pentamorfico/hoodini/issues/49) | Run parameters in HTML | Pending: persist effective parameters and display them in the output. |
@@ -52,14 +52,80 @@ features remain candidates, not promised release content.
   from the first row, which can omit optional fields present in subsequent rows.
 - Created this issue inventory and the Unreleased changelog.
 
+### 2026-09-07: data-correctness batch
+
+- #83: select a single GFF contig before computing coordinate or gene-count
+  windows. Use the matching FNA record, infer the contig for unique protein IDs
+  or single-contig inputs, and report ambiguous/missing contigs explicitly.
+- #84: declare the nine GFF field types during CSV parsing, retaining score and
+  phase as strings compatible with GBFF. Skip comment lines at parse time.
+- #81: map domain into superkingdom only when the legacy rank has no value.
+  Preserve existing output columns and do not treat root ranks as domains.
+- #86: introduce a shared, lazy four-column contig scan. DuckDB combines schemas
+  by name and supplies typed nulls for absent optional accession columns; the
+  Polars fallback normalizes partitions individually before concatenation.
+- Apply that scan to nuc2asmlen, direct pipeline lookup and missing-assembly
+  detection. Keep the 4 GB DuckDB limit and close the touched query connections
+  on errors as well as success. The updater now uses its supplied summary path.
+- Preserve writer metadata from all buffered rows, including keys absent from
+  the first row, and use stable Arrow types for the four core lookup fields.
+- Added 30 regression cases in three test modules. The initial 28 cases produced
+  22 failures and 6 passes against the unmodified implementation, reproducing
+  the reported issues. Two additional selection guards were added afterward.
+- Updated the user-facing Unreleased changelog with the implemented behavior.
+
+### Execution environment and publication notes
+
+- Local Git clone succeeded; terminal push lacked GitHub credentials. Repository
+  writes therefore use the authenticated GitHub connector. The documentation
+  baseline is commit `5781f344c0dc4b4831be9561ae581ff95c55bdcc`.
+- Conda/Mamba was unavailable locally and its bootstrap download was interrupted
+  by network approval. The full environment required by AGENTS.md for external
+  bioinformatics tools has not been set up or claimed as validated.
+- Used an isolated Python 3.12.13 environment for the Python regression suite,
+  following the Python-only approach of the existing CI. No external analysis
+  tools, live taxonomy downloads or complete NCBI databases were used by the new
+  tests. NCBI lineage responses are deterministic fixtures.
+- The initial orfipy build failed because the runtime requested missing clang;
+  rebuilding with the installed GCC/G++ succeeded. An interrupted installer
+  status was checked by an offline dependency check before running tests.
+- Key validation versions: Polars 1.44.1, DuckDB 1.5.5, PyArrow 25.0.1,
+  pytest 9.1.1, Biopython 1.88, gb-io 0.4.0, pyrodigal 3.7.1, orfipy 0.0.4,
+  ETE3 3.1.3, AlphaFetcher 0.2.0, Black 24.10.0, isort 9.0.1, Ruff 0.16.6.
+
 ## Validation
 
-No implementation validation has been run yet.
+| Check | Result |
+| --- | --- |
+| `pytest tests/unit tests/integration -o addopts='' -q --tb=short --disable-warnings` | 65 passed, 5 skipped. The five existing skips require contig or assembly-summary databases. |
+| New regression cases | 30 passed (11 neighborhood, 7 taxonomy, 12 contig metadata). |
+| Black and isort on the nine changed/new Python files | Passed. |
+| Ruff on the four new Python files | Passed. |
+| Ruff on the five modified Python files | Seven PLR0917 diagnostics, identical in count and rule to the original files at the starting commit. Pre-existing lint debt remains; the lint gate is not claimed to pass. |
+| `git diff --check` | Passed. |
+| Full Conda/Bioconda pipeline, live NCBI access, large-database performance | Not run; required before release. |
+| Minimum supported Python/dependency versions | Not run locally; current-version results do not establish lower-bound compatibility. |
+
+The GFF regression uses an actual GBFF written by Biopython and read by gb-io.
+Contig tests exercise actual DuckDB/Polars queries and Parquet I/O, both partition
+orders, optional columns absent from an entire dataset, forced Polars fallback,
+pipeline enrichment and incremental writing. No synthetic test stubs replace
+the parsers or database engines under test.
+
+## Next implementation batch
+
+1. Reproduce the assembly-summary parsing failure reported in #81's comment and
+   add stable schema handling without silently publishing incomplete summaries.
+2. Inspect #57 and #75 together using a real Conda environment and the Colab
+   launcher, then test tool/model compatibility and optional database setup.
+3. Add run provenance in the generated HTML (#49), excluding API keys.
+4. Coordinate table and search work in hoodini-viz (#78, #76, #79, #80) and test
+   the compiled viewer embedded in Hoodini output.
 
 ## Release checklist
 
-- [ ] Complete and test the first data-correctness batch.
-- [ ] Review additional release scope against the issue inventory.
+- [x] Complete and regression-test the first data-correctness batch.
+- [x] Review additional release scope against the issue inventory.
 - [ ] Run the full Conda/Bioconda pipeline with representative local and downloaded data.
 - [ ] Verify viewer changes in the generated standalone HTML, if included.
 - [ ] Review the Unreleased notes and choose the release version.
