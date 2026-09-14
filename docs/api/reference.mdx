@@ -92,10 +92,10 @@ hoodini download databases [options]
 | `--skip-padloc` | (flag) Skip padloc DB update. |
 | `--skip-deffinder` | (flag) Skip defense-finder model install. |
 | `--skip-genomad` | (flag) Skip GenoMAD download. |
-| `--skip-emapper` | (flag) Skip downloading emapper/mmseqs DB. |
+| `--skip-emapper` | (flag) Skip downloading emapper/DIAMOND DB. |
 | `--skip-parquet` | (flag) Skip downloading eggNOG parquet support files. |
 | `--skip-contig-lengths` | (flag) Skip downloading contig_lengths.parquet. |
-| `--threads` | Number of threads for aria2c and pigz (0 = use all cores). |
+| `--threads` | Number of threads for downloads and pigz (0 = use all cores). |
 
 ##### `metacerberus`
 
@@ -751,7 +751,7 @@ Extract header from an NCBI assembly summary file (line starting with #assembly_
 def download_assembly_db(dbs: list[str], output_path: Path, columns_to_keep: list[str] | None = None, include_historical: bool = True) -> None
 ```
 
-Download multiple assembly summary files using aria2c and save combined table.
+Download multiple assembly summary files concurrently and save combined table.
 
 #### `download_assembly_summary_db()`
 
@@ -1159,13 +1159,13 @@ def main() -> None
 
 ### `utils.downloader`
 
-#### `download_with_aria2c()`
+#### `download_urls()`
 
 ```python
-def download_with_aria2c(urls, dest_dir, connections = 16, split = 16, show_progress = True, show_aria2c_output = False, out_names = None, num_threads: int = 0)
+def download_urls(urls, dest_dir, connections = 16, show_progress = True, out_names = None, num_threads: int = 0)
 ```
 
-Download URLs to dest_dir using a single aria2c subprocess with Rich progress.
+Download URLs to dest_dir concurrently using bytehaul, with Rich progress.
 Returns a list of downloaded file paths.
 
 ### `utils.extract_neighborhood`
