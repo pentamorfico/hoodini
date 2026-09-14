@@ -4,7 +4,7 @@ from tempfile import mkdtemp
 
 import polars as pl
 
-from hoodini.utils.downloader import download_with_aria2c
+from hoodini.utils.downloader import download_urls
 from hoodini.utils.logging_utils import logger
 
 # NCBI fields are typed by name, never by their position or first few values.
@@ -136,10 +136,8 @@ def download_assembly_db(
     data_dir.mkdir(parents=True, exist_ok=True)
     staging_dir = Path(mkdtemp(prefix="assembly-summary-update-", dir=data_dir))
     try:
-        logger.info(f"Downloading {len(urls)} assembly summary files with aria2c...")
-        result_files = download_with_aria2c(
-            urls, staging_dir, show_progress=True, out_names=out_names
-        )
+        logger.info(f"Downloading {len(urls)} assembly summary files...")
+        result_files = download_urls(urls, staging_dir, show_progress=True, out_names=out_names)
         downloaded = {Path(path).resolve() for path in result_files}
         expected = [staging_dir / name for name in out_names]
         missing = [

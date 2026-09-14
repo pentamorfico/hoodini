@@ -415,7 +415,7 @@ def download_contig_lengths(api_key, skip_assembly_summary):
     "num_threads",
     type=int,
     default=0,
-    help="Number of threads for aria2c and pigz (0 = use all cores).",
+    help="Number of threads for downloads and pigz (0 = use all cores).",
 )
 def download_databases(
     force,

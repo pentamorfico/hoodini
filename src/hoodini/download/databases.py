@@ -5,7 +5,7 @@ import tarfile
 from importlib.resources import files
 from pathlib import Path
 
-from hoodini.utils.downloader import download_with_aria2c
+from hoodini.utils.downloader import download_urls
 from hoodini.utils.logging_utils import error, info, stage_done, stage_header, warn
 
 # eggNOG 7 / eggnog-mapper v3 (beta) database sources.
@@ -75,7 +75,7 @@ def _download_url(url: str, dest: Path, num_threads: int = 0):
     info(f"Downloading {url} -> {dest}")
     try:
         out_name = Path(dest).name
-        result_files = download_with_aria2c(
+        result_files = download_urls(
             [url], dest.parent, show_progress=True, out_names=[out_name], num_threads=num_threads
         )
         if any(str(dest) == f for f in result_files):
