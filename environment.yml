@@ -20,8 +20,6 @@ dependencies:
   - genomad
   - mafft
   - foldseek
-  - aragorn
-  - infernal
   - famsa
   - veryfasttree
   - firefox

@@ -1,16 +1,169 @@
 import re
-import subprocess
-import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import polars as pl
+import pyhmmer
+import pyinfernal
 import requests
 
 from hoodini.utils.logging_utils import error, info, warn
 
 # Regex pattern for RFAM IDs: RF followed by exactly 5 digits
 RFAM_PATTERN = re.compile(r"^RF\d{5}$")
+
+# --- Consensus secondary-structure derivation (.cm parsing) -------------------
+#
+# pyinfernal does not expose consensus secondary structure (WUSS/dot-bracket)
+# anywhere in its Python API, so it is reimplemented here directly from the
+# plain-text Infernal ``.cm`` format. This reimplements the node/state
+# traversal Infernal itself uses internally (``CreateEmitMap()`` in
+# ``display.c``) to compute, for each consensus column of a CM, whether it is
+# unpaired or base-paired with another column, with no dependency on the
+# ``cmsearch``/``cmemit`` binaries.
+#
+# Node numbers (``nd``) are assigned by Infernal at model-construction time
+# and are NOT necessarily encountered in file/print order: only the *main
+# chain* (non-BIF nodes) is guaranteed contiguous, where a node's child is
+# always ``nd + 1``. Node headers are therefore parsed by their explicit
+# index, not by encounter order, and bifurcation (``BIF``) children are
+# resolved via the ``cfirst``/``cnum`` state pointers on their bifurcation
+# state, exactly as Infernal does.
+#
+# Validated against ``cmsearch``/``cmalign``-derived ``SS_cons`` ground truth
+# for five structurally diverse Rfam models (5S rRNA, tRNA, tmRNA, and the
+# much larger, heavily-bifurcated SSU/LSU rRNA models), with byte-for-byte
+# matches in all cases.
+
+_CM_NODE_RE = re.compile(r"\[\s*(\w+)\s+(\d+)\s*\]")
+_CM_STATE_TYPES = {"S", "B", "D", "MP", "ML", "MR", "IL", "IR", "E"}
+
+
+def parse_cm_consensus_structures(cm_path: str) -> dict[str, str]:
+    """Parse a (possibly multi-model) ``.cm`` file into consensus dot-bracket structures.
+
+    Args:
+        cm_path: Path to a plain-text Infernal ``.cm`` file, containing one or
+            more concatenated covariance models.
+
+    Returns:
+        Mapping of CM ``NAME`` to its consensus structure string, using a
+        simplified Vienna-style dot-bracket notation (``(``, ``)``, ``.``) of
+        length ``CLEN``, indexed the same way as ``cm_from``/``cm_to`` reported
+        by ``pyinfernal`` hits (1-based, inclusive).
+    """
+    structures = {}
+    with open(cm_path) as f:
+        lines = f.readlines()
+
+    # Split into per-model blocks (each ends with a line containing only "//").
+    blocks = []
+    start = 0
+    for i, line in enumerate(lines):
+        if line.strip() == "//":
+            blocks.append(lines[start : i + 1])
+            start = i + 1
+
+    for block in blocks:
+        # Rfam distributes each CM bundled with a companion HMMER3 filter
+        # profile (used internally by cmsearch), concatenated in the same
+        # file and also delimited by "//". Multiple models concatenated
+        # together may also leave blank separator lines between blocks.
+        # Skip anything that isn't a CM block.
+        first_line = next((line for line in block if line.strip()), "")
+        if not first_line.startswith("INFERNAL"):
+            continue
+        name, structure = _parse_single_cm(block)
+        if name is not None:
+            structures[name] = structure
+    return structures
+
+
+def _parse_single_cm(lines: list[str]) -> tuple[str | None, str]:
+    name = None
+    clen = None
+    nnodes = None
+    ndtype: list[str | None] = []
+    nodemap: list[int | None] = []
+    cfirst: dict[int, int] = {}
+    cnum: dict[int, int] = {}
+    ndidx_of_state: dict[int, int] = {}
+
+    current_nd = None
+    for line in lines:
+        if line.startswith("NAME"):
+            name = line.split(None, 1)[1].strip()
+            continue
+        if line.startswith("CLEN"):
+            clen = int(line.split()[1])
+            continue
+        if line.startswith("NODES"):
+            nnodes = int(line.split()[1])
+            ndtype = [None] * nnodes
+            nodemap = [None] * nnodes
+            continue
+
+        m = _CM_NODE_RE.search(line)
+        if m and line.lstrip().startswith("["):
+            ntype, nidx = m.groups()
+            nidx = int(nidx)
+            ndtype[nidx] = ntype
+            current_nd = nidx
+            continue
+
+        parts = line.split()
+        if not parts or current_nd is None or parts[0] not in _CM_STATE_TYPES:
+            continue
+        v = int(parts[1])
+        if nodemap[current_nd] is None:
+            nodemap[current_nd] = v
+        ndidx_of_state[v] = current_nd
+        cfirst[v] = int(parts[4])
+        cnum[v] = int(parts[5])
+
+    if clen is None or nnodes is None:
+        return name, ""
+
+    # Reimplementation of Infernal's CreateEmitMap() (display.c): an iterative
+    # pre-order traversal assigning each MATP/MATL/MATR node its consensus
+    # column position(s), recursing into BIF children via their state pointers.
+    lpos: list[int | None] = [None] * nnodes
+    rpos: list[int | None] = [None] * nnodes
+    cpos = 0
+    stack = [(0, 0)]
+    while stack:
+        nd, on_right = stack.pop()
+        if on_right:
+            rpos[nd] = cpos + 1
+            if ndtype[nd] in ("MATP", "MATR"):
+                cpos += 1
+        else:
+            if ndtype[nd] in ("MATP", "MATL"):
+                cpos += 1
+            lpos[nd] = cpos
+            if ndtype[nd] == "BIF":
+                v0 = nodemap[nd]
+                right_child_nd = ndidx_of_state[cnum[v0]]
+                left_child_nd = ndidx_of_state[cfirst[v0]]
+                stack.append((nd, 1))
+                stack.append((right_child_nd, 0))
+                stack.append((left_child_nd, 0))
+            else:
+                stack.append((nd, 1))
+                if ndtype[nd] != "END":
+                    stack.append((nd + 1, 0))
+
+    structure = ["."] * (clen + 2)  # 1-indexed, +1 slack like Infernal (0..clen+1)
+    for nd in range(nnodes):
+        if ndtype[nd] == "MATP":
+            structure[lpos[nd]] = "("
+            structure[rpos[nd]] = ")"
+        elif ndtype[nd] == "MATL":
+            structure[lpos[nd]] = "."
+        elif ndtype[nd] == "MATR":
+            structure[rpos[nd]] = "."
+
+    return name, "".join(structure[1 : clen + 1])
 
 
 def is_rfam_id(value: str) -> bool:
@@ -139,12 +292,12 @@ def download_rfam_cms(rfam_ids: list[str], num_threads: int = 4) -> str:
 
 def run_ncrna(all_neigh, den_data, output, num_threads, valid_unique_ids, ncrna_input: str):
     """
-    Run Infernal for ncRNA annotation.
+    Run Infernal (via pyinfernal) for ncRNA annotation.
 
     Args:
         ncrna_input: Either a path to a CM file or comma-separated RFAM IDs (e.g., RF00001,RF00002)
     """
-    info("🔬\tRunning Infernal for ncRNA annotation...")
+    info("🔬\tRunning Infernal (pyinfernal) for ncRNA annotation...")
     output = Path(output)
     ncrna_dir = output / "ncrna"
     ncrna_dir.mkdir(parents=True, exist_ok=True)
@@ -152,189 +305,139 @@ def run_ncrna(all_neigh, den_data, output, num_threads, valid_unique_ids, ncrna_
     # Parse input to determine if it's a path or RFAM IDs
     is_rfam, parsed_value = parse_ncrna_input(ncrna_input)
 
-    temp_cm_file = None
     if is_rfam:
-        # Download CMs from RFAM and create temporary concatenated file
+        # Download CMs from RFAM and write a concatenated CM file
         cm_content = download_rfam_cms(parsed_value, num_threads)
-        temp_cm_file = tempfile.NamedTemporaryFile(  # noqa: SIM115
-            mode="w", suffix=".cm", delete=False, dir=ncrna_dir
-        )
-        temp_cm_file.write(cm_content)
-        temp_cm_file.close()
-        cm_path = Path(temp_cm_file.name)
-        info(f"   Created temporary CM file: {cm_path.name}")
+        cm_path = ncrna_dir / "downloaded_models.cm"
+        cm_path.write_text(cm_content)
+        info(f"   Wrote downloaded CM file: {cm_path.name}")
     else:
         cm_path = parsed_value
 
-    stockholm_file = ncrna_dir / "results.sto"
-    tblout_file = ncrna_dir / "results.txt"
+    fasta_path = output / "neighborhood" / "neighborhoods.fasta"
 
-    try:
-        command = [
-            "cmsearch",
-            "--tblout",
-            str(tblout_file),
-            "-A",
-            str(stockholm_file),
-            "-E",
-            "1e-5",
-            "--incE",
-            "1e-5",
-            "--cpu",
-            str(num_threads),
-            str(cm_path),
-            str(output / "neighborhood" / "neighborhoods.fasta"),
-        ]
-        subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
-    finally:
-        # Clean up temporary file if created
-        if temp_cm_file is not None:
-            try:
-                Path(temp_cm_file.name).unlink()
-                info("   Cleaned up temporary CM file")
-            except OSError:
-                pass
+    # Consensus secondary structure (per CM model), derived purely from the
+    # .cm text file without needing the `cmsearch`/`cmemit` binaries, since
+    # pyinfernal does not expose it directly.
+    consensus_structures = parse_cm_consensus_structures(str(cm_path))
 
-    column_names = [
-        "nucid",
-        "-",
-        "nc_feature",
-        "--",
-        "cm",
-        "mdlfrom",
-        "mdlto",
-        "seqfrom",
-        "seqto",
-        "strand_ncrna",
-        "trunc",
-        "pass",
-        "gc",
-        "bias",
-        "score",
-        "E-value",
-        "inc",
-        "desc",
-    ]
-    if stockholm_file.stat().st_size > 0:
-        # Parse tblout file manually (whitespace-separated, comments start with #)
-        rows = []
-        with open(tblout_file) as f:
-            for line in f:
-                if line.startswith("#") or not line.strip():
-                    continue
-                parts = re.split(r"\s+", line.strip(), maxsplit=17)
-                if len(parts) >= 17:
-                    rows.append(parts[:18] if len(parts) >= 18 else parts + [""])
+    alphabet = pyhmmer.easel.Alphabet.rna()
+    with pyhmmer.easel.SequenceFile(
+        fasta_path, format="fasta", digital=True, alphabet=alphabet
+    ) as seq_file:
+        sequences = list(seq_file)
 
-        if not rows:
-            warn(f"No ncRNA found by Infernal (no valid rows in {tblout_file})")
-            empty_df = pl.DataFrame()
-            empty_df.write_csv(
-                ncrna_dir / "ncrna_results.tsv", separator="\t", include_header=False
-            )
-            return empty_df
-
-        cmdf = pl.DataFrame(rows, schema=column_names, orient="row")
-        cmdf = cmdf.with_columns(
-            [
-                pl.col("seqfrom").cast(pl.Int64),
-                pl.col("seqto").cast(pl.Int64),
-            ]
-        )
-
-        # Build sequence and structure lookup from stockholm file
-        seq_lookup = {}
-        structure_lookup = {}
-
-        from Bio import AlignIO
-
-        for alignment in AlignIO.parse(stockholm_file, "stockholm"):
-            # Get consensus secondary structure if available
-            ss_cons = None
-            if (
-                hasattr(alignment, "column_annotations")
-                and "secondary_structure" in alignment.column_annotations
-            ):
-                ss_cons = alignment.column_annotations["secondary_structure"]
-
-            for record in alignment:
-                # Parse sequence ID: seqid/start-end
-                parts = record.id.split("/")
-                seqid = parts[0]
-                coords = parts[1].split("-")
-                seqfrom = int(coords[0])
-                seqto = int(coords[1])
-
-                # Clean sequence (remove gaps)
-                sequence = str(record.seq).replace(".", "").replace("-", "")
-                seq_lookup[(seqid, seqfrom, seqto)] = sequence
-
-                # Map structure to sequence (remove positions with gaps in sequence)
-                # Convert to Vienna RNA format: . for unpaired, () for base pairs
-                # Stockholm WUSS notation: https://en.wikipedia.org/wiki/Stockholm_format
-                # Unpaired: . , ; : _ - ~
-                # Base pairs (nested): <> () [] {}
-                # Pseudoknots: Aa Bb Cc ... Zz (uppercase 5', lowercase 3')
-                if ss_cons:
-                    structure = ""
-                    for i, char in enumerate(str(record.seq)):
-                        if char not in ".-" and i < len(ss_cons):
-                            ss_char = ss_cons[i]
-                            # Convert Stockholm/WUSS to Vienna format
-                            if ss_char in ".,;:_-~":
-                                # Unpaired characters -> .
-                                structure += "."
-                            elif ss_char in "<([{" or ss_char.isupper():
-                                # Opening base pairs (including pseudoknot 5' end) -> (
-                                structure += "("
-                            elif ss_char in ">)]}" or ss_char.islower():
-                                # Closing base pairs (including pseudoknot 3' end) -> )
-                                structure += ")"
-                            else:
-                                # Unknown character -> unpaired
-                                structure += "."
-                    structure_lookup[(seqid, seqfrom, seqto)] = structure
-
-        # Add sequences and structures to dataframe
-        sequences = []
-        structures = []
-        for row in cmdf.iter_rows(named=True):
-            key = (row["nucid"], row["seqfrom"], row["seqto"])
-            sequences.append(seq_lookup.get(key, ""))
-            structures.append(structure_lookup.get(key, ""))
-        cmdf = cmdf.with_columns(
-            [
-                pl.Series("sequence", sequences),
-                pl.Series("structure", structures),
-            ]
-        )
-
-        valid = all_neigh.filter(pl.col("unique_id").is_in([str(n) for n in valid_unique_ids]))[
-            [
-                "seqid",
-                "start_target",
-                "end_target",
-                "start_win",
-                "end_win",
-                "strand_win",
-                "unique_id",
-                "length",
-                "temp_seqid",
-            ]
-        ]
-        info(f"Parsed {cmdf.height} ncRNA hits from Infernal.")
-        cmdf = cmdf.join(valid, left_on="nucid", right_on="temp_seqid", how="left")
-        cmdf = cmdf.with_columns(
-            (pl.col("seqfrom") + pl.col("start_win")).alias("start"),
-            (pl.col("seqto") + pl.col("start_win")).alias("end"),
-            pl.col("seqid").alias("nucid"),
-            pl.col("unique_id").cast(pl.Utf8),
-        )
-        cmdf.write_csv(ncrna_dir / "ncrna_results.tsv", separator="\t", include_header=True)
-        return cmdf
-
-    else:
-        warn(f"No ncRNA found by Infernal (empty {stockholm_file})")
+    if not sequences:
+        warn(f"No sequences found in {fasta_path}")
         empty_df = pl.DataFrame()
         empty_df.write_csv(ncrna_dir / "ncrna_results.tsv", separator="\t", include_header=False)
         return empty_df
+
+    # Pre-fetch targets into a DigitalSequenceBlock: as of pyinfernal 0.1.x,
+    # `cmsearch()` only auto-computes the pipeline's Z parameter (total
+    # database length, needed for E-value calibration) when passed a
+    # DigitalSequenceBlock directly; building it ourselves works around that.
+    targets = pyhmmer.easel.DigitalSequenceBlock(alphabet, sequences)
+
+    with pyinfernal.cm.CMFile(str(cm_path), alphabet=alphabet) as cm_file:
+        cms = list(cm_file)
+
+    if not cms:
+        error(f"No covariance models could be read from {cm_path}")
+        raise RuntimeError(f"Failed to load any CM models from {cm_path}")
+
+    rows = []
+    for hits in pyinfernal.cmsearch(cms, targets, cpus=num_threads, E=1e-5, incE=1e-5):
+        query_name = hits.query.name
+        query_accession = hits.query.accession
+        structure = consensus_structures.get(query_name, "")
+        for hit in hits:
+            aln = hit.alignment
+            sequence = aln.target_sequence.replace("-", "")
+            hit_structure = _slice_hit_structure(
+                structure, aln.cm_from, aln.cm_sequence, aln.target_sequence
+            )
+            rows.append(
+                {
+                    "nucid": hit.name,
+                    "--": query_accession,
+                    "nc_feature": query_name,
+                    "cm": "cm",
+                    "mdlfrom": aln.cm_from,
+                    "mdlto": aln.cm_to,
+                    "seqfrom": aln.target_from,
+                    "seqto": aln.target_to,
+                    "strand_ncrna": hit.strand,
+                    "score": hit.score,
+                    "E-value": hit.evalue,
+                    "sequence": sequence,
+                    "structure": hit_structure,
+                }
+            )
+
+    if not rows:
+        warn("No ncRNA found by Infernal (pyinfernal)")
+        empty_df = pl.DataFrame()
+        empty_df.write_csv(ncrna_dir / "ncrna_results.tsv", separator="\t", include_header=False)
+        return empty_df
+
+    cmdf = pl.DataFrame(rows)
+    cmdf = cmdf.with_columns(
+        [
+            pl.col("seqfrom").cast(pl.Int64),
+            pl.col("seqto").cast(pl.Int64),
+        ]
+    )
+
+    valid = all_neigh.filter(pl.col("unique_id").is_in([str(n) for n in valid_unique_ids]))[
+        [
+            "seqid",
+            "start_target",
+            "end_target",
+            "start_win",
+            "end_win",
+            "strand_win",
+            "unique_id",
+            "length",
+            "temp_seqid",
+        ]
+    ]
+    info(f"Parsed {cmdf.height} ncRNA hits from Infernal.")
+    cmdf = cmdf.join(valid, left_on="nucid", right_on="temp_seqid", how="left")
+    cmdf = cmdf.with_columns(
+        (pl.col("seqfrom") + pl.col("start_win")).alias("start"),
+        (pl.col("seqto") + pl.col("start_win")).alias("end"),
+        pl.col("seqid").alias("nucid"),
+        pl.col("unique_id").cast(pl.Utf8),
+    )
+    cmdf.write_csv(ncrna_dir / "ncrna_results.tsv", separator="\t", include_header=True)
+    return cmdf
+
+
+def _slice_hit_structure(
+    consensus_structure: str, cm_from: int, cm_sequence: str, target_sequence: str
+) -> str:
+    """Slice a per-model consensus structure down to a single hit's alignment.
+
+    Walks the CM/target alignment columns in lockstep with the model's
+    consensus-column pointer (starting at ``cm_from``): match columns
+    (uppercase in ``cm_sequence``) consume one structure character and
+    advance the pointer; insert columns (lowercase) are always unpaired in
+    the output; columns deleted in the target (``-``) consume the pointer
+    but contribute nothing to the output, keeping the result aligned 1:1
+    with the gap-free hit sequence.
+    """
+    pointer = cm_from
+    out = []
+    for cm_char, target_char in zip(cm_sequence, target_sequence):
+        is_match = cm_char.isupper()
+        if target_char == "-":
+            if is_match:
+                pointer += 1
+            continue
+        if is_match:
+            out.append(consensus_structure[pointer - 1])
+            pointer += 1
+        else:
+            out.append(".")
+    return "".join(out)
