@@ -226,7 +226,10 @@ def cli():
     "--ncrna",
     type=str,
     default=None,
-    help="ncRNA prediction: path to CM file OR comma-separated RFAM IDs (e.g., RF00001,RF00234).",
+    help=(
+        "ncRNA prediction with pyinfernal (Infernal): path to CM file OR "
+        "comma-separated RFAM IDs (e.g., RF00001,RF00234)."
+    ),
 )
 @click.option("--cctyper", is_flag=True, help="Run CCtyper for CRISPR-Cas prediction.")
 @click.option("--trna", is_flag=True, help="Run tRNA/tmRNA detection with pyaragorn (ARAGORN).")
