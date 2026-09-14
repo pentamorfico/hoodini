@@ -29,6 +29,7 @@ dependencies = [
 	"pyhmmer>=0.12,<0.13",
 	"pyinfernal>=0.1.0",
 	"pyaragorn>=0.3.0",
+	"bytehaul>=0.2.4",
 	"alphafetcher",
 	"jinja2",
 	"mappy",
@@ -170,10 +171,8 @@ famsa = "*"
 veryfasttree = "*"
 mmseqs2 = "*"
 entrez-direct = "*"
-aria2 = "*"
 pigz = "*"
 ete3 = ">=3.1.3"
-aria2p = "*"
 alphafetcher = "*"
 diamondonpy = "*"
 playwright-python = ">=1.47,<1.48"

@@ -30,7 +30,7 @@ def download_idmapping(dest: Path | None = None, num_threads: int = 0) -> bool:
     dest : Path, optional
         Destination path.  Defaults to the package data directory.
     num_threads : int
-        Thread count forwarded to aria2c (0 = auto).
+        Thread count forwarded to the downloader (0 = auto).
 
     Returns
     -------

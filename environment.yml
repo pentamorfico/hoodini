@@ -10,7 +10,6 @@ dependencies:
   - certifi
   - ca-certificates
   - entrez-direct
-  - aria2
   - pigz
   - blast
   - diamond

@@ -61,7 +61,7 @@ def serve_reports(monkeypatch):
                 paths.append(str(path))
             return paths
 
-        monkeypatch.setattr(assembly_summary, "download_with_aria2c", download)
+        monkeypatch.setattr(assembly_summary, "download_urls", download)
         return calls
 
     return configure
