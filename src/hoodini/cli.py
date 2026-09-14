@@ -398,7 +398,7 @@ def download_contig_lengths(api_key, skip_assembly_summary):
 @click.option("--skip-padloc", is_flag=True, help="Skip padloc DB update.")
 @click.option("--skip-deffinder", is_flag=True, help="Skip defense-finder model install.")
 @click.option("--skip-genomad", is_flag=True, help="Skip GenoMAD download.")
-@click.option("--skip-emapper", is_flag=True, help="Skip downloading emapper/mmseqs DB.")
+@click.option("--skip-emapper", is_flag=True, help="Skip downloading emapper/DIAMOND DB.")
 @click.option("--skip-parquet", is_flag=True, help="Skip downloading eggNOG parquet support files.")
 @click.option(
     "--skip-contig-lengths", is_flag=True, help="Skip downloading contig_lengths.parquet."

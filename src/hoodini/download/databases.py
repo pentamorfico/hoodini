@@ -8,9 +8,13 @@ from pathlib import Path
 from hoodini.utils.downloader import download_with_aria2c
 from hoodini.utils.logging_utils import error, info, stage_done, stage_header, warn
 
-EMAPPER_URL = "http://eggnog6.embl.de/download/emapperdb-5.0.2/mmseqs.tar.gz"
-EGGNOG_OG = "https://storage.hoodini.bio/eggnog_og.parquet"
-EGGNOG_PROTS = "https://storage.hoodini.bio/eggnog_prots.parquet"
+# eggNOG 7 / eggnog-mapper v3 (beta) database sources.
+# We use DIAMOND (not MMseqs2) for the protein search step: benchmarked ~7.5x
+# faster and far less memory-hungry than MMseqs2 on the eggNOG 7 DB (no
+# precomputed MMseqs2 index is shipped, so it must be built on every run).
+DIAMOND_URL = "https://data.cgmlab.org/eggnog-mapper/emapper-3.0/data/eggnog_proteins.dmnd"
+EGGNOG_OG = "https://storage.hoodini.bio/eggnog7/eggnog_og.parquet"
+EGGNOG_PROTS = "https://storage.hoodini.bio/eggnog7/eggnog_prots.parquet"
 CONTIGS_URL = "https://storage.hoodini.bio/contig_lengths.parquet"
 
 
@@ -182,37 +186,17 @@ def main(
         info("Skipping genomad database download (--skip-genomad)")
 
     emapper_dir.mkdir(parents=True, exist_ok=True)
-    emapper_tar = emapper_dir.joinpath("mmseqs.tar.gz")
-    mmseqs_folder = emapper_dir.joinpath("mmseqs")
+    diamond_db = emapper_dir.joinpath("eggnog_proteins.dmnd")
 
     if skip_emapper:
-        info("Skipping mmseqs/emapper DB download (--skip-emapper)")
-    elif force or not mmseqs_folder.exists():
-        warn("Downloading and extracting mmseqs; folder missing or --force is set")
-
-        ok = _download_url(EMAPPER_URL, emapper_tar, num_threads=num_threads)
-        if ok:
-            ok_extract = extract_tar(emapper_tar, emapper_dir, threads=num_threads)
-            if ok_extract:
-                info(f"Extracted {emapper_tar.name} into {emapper_dir}")
-            else:
-                warn(f"Failed to extract {emapper_tar.name}")
-            try:
-                emapper_tar.unlink()
-                info(f"Removed {emapper_tar} to save space")
-            except Exception as e:
-                warn(f"Failed to remove {emapper_tar}: {e}")
-            padded_prefix = mmseqs_folder.joinpath("mmseqs.db_pad")
-            if not padded_prefix.exists():
-                try:
-                    cmd = ["mmseqs", "makepaddedseqdb", "mmseqs.db", "mmseqs.db_pad"]
-                    _run_cmd(cmd, cwd=mmseqs_folder)
-                except Exception as e:
-                    warn(f"Failed to create padded mmseqs DB: {e}")
-        else:
-            warn(f"Download failed from {EMAPPER_URL}")
+        info("Skipping emapper/DIAMOND DB download (--skip-emapper)")
+    elif force or not diamond_db.exists():
+        warn("Downloading DIAMOND DB (eggNOG 7); file missing or --force is set")
+        ok = _download_url(DIAMOND_URL, diamond_db, num_threads=num_threads)
+        if not ok:
+            warn(f"Download failed from {DIAMOND_URL}")
     else:
-        info(f"{mmseqs_folder} already exists; skipping download and extraction")
+        info(f"{diamond_db} already exists; skipping download")
 
     if skip_parquet:
         info("Skipping eggNOG parquet support files (--skip-parquet)")

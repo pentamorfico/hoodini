@@ -1,7 +1,7 @@
+import concurrent.futures
 import contextlib
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 import requests
@@ -76,32 +76,8 @@ def download_with_aria2c(
             out_name = f"downloaded_file_{idx}"
         out_name_list.append(out_name)
 
-    input_lines = []
-    for url, out_name in zip(urls, out_name_list):
-        input_lines.append(f"{url}\n  out={out_name}")
-    from tempfile import NamedTemporaryFile
-
-    with NamedTemporaryFile("w", delete=False) as f:
-        for line in input_lines:
-            f.write(line + "\n")
-        input_file = f.name
-
     max_conn = str(num_threads or 16)
-    cmd = [
-        "aria2c",
-        "--summary-interval=1",
-        "--enable-color=false",
-        "--max-connection-per-server",
-        max_conn,
-        "--split",
-        max_conn,
-        "-k",
-        "1M",
-        "-d",
-        str(dest_dir),
-        "-i",
-        input_file,
-    ]
+    active_processes = set()
 
     try:
         if show_progress:
@@ -115,87 +91,136 @@ def download_with_aria2c(
                 refresh_per_second=10,
                 transient=True,
             ) as progress:
-                task = progress.add_task("aria2c batch", total=None, bytes_text="…")
+                task_ids = {
+                    out_name: progress.add_task(out_name, total=None, bytes_text="…")
+                    for out_name in out_name_list
+                }
 
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                bufsize=0,
-            )
+                def download_one(url, out_name):
+                    cmd = [
+                        "aria2c",
+                        "--summary-interval=1",
+                        "--enable-color=false",
+                        "--max-connection-per-server",
+                        max_conn,
+                        "--split",
+                        max_conn,
+                        "-k",
+                        "1M",
+                        "-d",
+                        str(dest_dir),
+                        "--out",
+                        out_name,
+                        url,
+                    ]
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        bufsize=0,
+                    )
+                    active_processes.add(proc)
+                    buf = b""
+                    total_bytes = None
+                    task = task_ids[out_name]
 
-            buf = b""
-            total_bytes = None
+                    while True:
+                        chunk = proc.stdout.read(1024)
+                        if not chunk:
+                            if proc.poll() is not None:
+                                break
+                            continue
 
-            while True:
-                chunk = proc.stdout.read(1024)
-                if not chunk:
-                    if proc.poll() is not None:
-                        break
-                    continue
+                        buf += chunk
+                        parts = re.split(rb"[\r\n]", buf)
+                        for part in parts[:-1]:
+                            line = part.decode("utf-8", "ignore")
+                            downloaded, total, pct = None, None, None
+                            match = SIZE_RE.search(line)
+                            if match:
+                                d_num, d_unit, t_num, t_unit = match.groups()
+                                downloaded = to_bytes(d_num, d_unit)
+                                total = to_bytes(t_num, t_unit)
+                            match = PERCENT_RE.search(line)
+                            if match:
+                                pct = float(match.group(1))
 
-                buf += chunk
-                parts = re.split(rb"[\r\n]", buf)
-                for part in parts[:-1]:
-                    line = part.decode("utf-8", "ignore")
-                    downloaded, total, pct = None, None, None
-                    m = SIZE_RE.search(line)
-                    if m:
-                        d_num, d_unit, t_num, t_unit = m.groups()
-                        try:
-                            downloaded = to_bytes(d_num, d_unit)
-                            total = to_bytes(t_num, t_unit)
-                        except Exception:
-                            downloaded = total = None
-                    p = PERCENT_RE.search(line)
-                    if p:
-                        try:
-                            pct = float(p.group(1))
-                        except Exception:
-                            pct = None
+                            if show_aria2c_output and (
+                                downloaded is not None or total is not None or pct is not None
+                            ):
+                                progress.console.print(line)
 
-                    if show_aria2c_output and (
-                        downloaded is not None or total is not None or pct is not None
-                    ):
-                        sys.stdout.write(line + "\n")
-                        sys.stdout.flush()
+                            if total is not None and downloaded is not None:
+                                total_bytes = int(total)
+                                progress.update(
+                                    task,
+                                    total=total_bytes,
+                                    completed=int(downloaded),
+                                    bytes_text=f"{fmt_bytes(downloaded)} / {fmt_bytes(total)}",
+                                )
+                            elif pct is not None and total_bytes is None:
+                                progress.update(
+                                    task, total=100.0, completed=pct, bytes_text=f"{pct:.1f}%"
+                                )
+                        buf = parts[-1]
 
-                    if total is not None and downloaded is not None:
-                        try:
-                            total_bytes = int(total)
-                            downloaded_bytes = int(downloaded)
-                        except Exception:
-                            total_bytes = int(total or 0)
-                            downloaded_bytes = int(downloaded or 0)
+                    code = proc.wait()
+                    active_processes.discard(proc)
+                    if code != 0:
+                        raise RuntimeError(f"aria2c exited with non-zero status: {code}")
+                    if total_bytes:
                         progress.update(
                             task,
                             total=total_bytes,
-                            completed=downloaded_bytes,
-                            bytes_text=f"{fmt_bytes(downloaded_bytes)} / {fmt_bytes(total_bytes)}",
+                            completed=total_bytes,
+                            bytes_text=f"{fmt_bytes(total_bytes)} / {fmt_bytes(total_bytes)}",
                         )
-                    elif pct is not None and total_bytes is None:
-                        progress.update(task, total=100.0, completed=pct, bytes_text=f"{pct:.1f}%")
+                    else:
+                        progress.update(task, total=100.0, completed=100.0, bytes_text="100%")
 
-                buf = parts[-1]
-
-            if total_bytes:
-                progress.update(
-                    task,
-                    total=total_bytes,
-                    completed=total_bytes,
-                    bytes_text=f"{fmt_bytes(total_bytes)} / {fmt_bytes(total_bytes)}",
-                )
-            else:
-                progress.update(task, total=100.0, completed=100.0, bytes_text="100%")
-
-            code = proc.wait()
-            if code != 0:
-                raise SystemExit(f"aria2c exited with non-zero status: {code}")
+                with concurrent.futures.ThreadPoolExecutor(max_workers=len(urls)) as executor:
+                    futures = [
+                        executor.submit(download_one, url, out_name)
+                        for url, out_name in zip(urls, out_name_list)
+                    ]
+                    for future in futures:
+                        future.result()
         else:
-            subprocess.run(cmd, check=True)
+            input_lines = []
+            for url, out_name in zip(urls, out_name_list):
+                input_lines.append(f"{url}\n  out={out_name}")
+            from tempfile import NamedTemporaryFile
+
+            with NamedTemporaryFile("w", delete=False) as f:
+                for line in input_lines:
+                    f.write(line + "\n")
+                input_file = f.name
+            try:
+                subprocess.run(
+                    [
+                        "aria2c",
+                        "--summary-interval=1",
+                        "--enable-color=false",
+                        "--max-connection-per-server",
+                        max_conn,
+                        "--split",
+                        max_conn,
+                        "-k",
+                        "1M",
+                        "-d",
+                        str(dest_dir),
+                        "-i",
+                        input_file,
+                    ],
+                    check=True,
+                )
+            finally:
+                with contextlib.suppress(Exception):
+                    Path(input_file).unlink()
     finally:
-        with contextlib.suppress(Exception):
-            Path(input_file).unlink()
+        for proc in active_processes:
+            if proc.poll() is None:
+                proc.terminate()
 
     for out_name in out_name_list:
         candidate = dest_dir / out_name
