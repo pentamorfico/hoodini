@@ -378,25 +378,23 @@ def download_type_dive():
     "--api-key",
     "api_key",
     default=os.environ.get("NCBI_API_KEY"),
-    help="NCBI API key (overrides environment variable NCBI_API_KEY).",
-)
-@click.option(
-    "--api-keys-file",
-    "api_keys_file",
-    type=click.Path(exists=True, dir_okay=False, path_type=str),
-    default=None,
     help=(
-        "Path to a file with one NCBI API key per line. Runs one download "
-        "session per key in parallel, each with its own rate-limit bucket "
-        "(see --connections-per-key). Never commit this file to git."
+        "NCBI API key (overrides environment variable NCBI_API_KEY). Raises the "
+        "concurrency cap from 3 to 10 requests/s, per NCBI's documented rate "
+        "limits. Only a single key is supported: rotating multiple keys to "
+        "exceed one key's rate limit would violate NCBI's terms of use."
     ),
 )
 @click.option(
-    "--connections-per-key",
-    "connections_per_key",
+    "--workers",
+    "workers",
     type=int,
-    default=3,
-    help="Max concurrent connections per API key when --api-keys-file is used (default: 3).",
+    default=None,
+    help=(
+        "Max concurrent requests. Defaults to NCBI's documented per-key rate "
+        "limit: 3 without --api-key, 10 with it. Override only if you know "
+        "what you're doing."
+    ),
 )
 @click.option(
     "--skip-assembly-summary",
@@ -405,25 +403,15 @@ def download_type_dive():
     default=False,
     help="Skip refreshing local assembly_summary.parquet (use existing local copy).",
 )
-def download_contig_lengths(api_key, api_keys_file, connections_per_key, skip_assembly_summary):
+def download_contig_lengths(api_key, workers, skip_assembly_summary):
     """Download missing NCBI contig length records and update precomputed list."""
     stage_header("Downloading NCBI contig lengths", "📥")
     from hoodini.download.contig_lengths import download_contig_lengths as impl
 
-    api_keys = None
-    if api_keys_file:
-        with open(api_keys_file) as f:
-            api_keys = [line.strip() for line in f if line.strip() and not line.startswith("#")]
-        if not api_keys:
-            raise click.ClickException(f"No API keys found in {api_keys_file}")
-    elif os.environ.get("NCBI_API_KEYS"):
-        api_keys = [k.strip() for k in os.environ["NCBI_API_KEYS"].split(",") if k.strip()]
-
     impl(
         api_key=api_key,
+        workers=workers,
         skip_assembly_summary=skip_assembly_summary,
-        api_keys=api_keys,
-        per_key_concurrency=connections_per_key,
     )
     stage_done("NCBI contig length download complete")
 
