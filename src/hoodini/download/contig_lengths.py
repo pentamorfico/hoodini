@@ -106,11 +106,12 @@ def get_missing_contigs_from_summary(
         with duckdb.connect(":memory:") as con:
             con.execute('SET memory_limit = "4GB"')
 
-            # Create temp table for allowed assemblies if provided
+            # Expose allowed assemblies as a zero-copy DuckDB view. A prior
+            # version built this via CREATE TABLE + row-by-row executemany,
+            # which takes minutes for the several-million-row candidate lists
+            # this receives; register() scans the Polars DataFrame directly.
             if allowed_assemblies_df is not None:
-                allowed_list = allowed_assemblies_df["assembly_accession"].to_list()
-                con.execute("CREATE TEMP TABLE allowed_asm (assembly_accession VARCHAR)")
-                con.executemany("INSERT INTO allowed_asm VALUES (?)", [(a,) for a in allowed_list])
+                con.register("allowed_asm", allowed_assemblies_df)
 
             # Build the query for valid assemblies from assembly_summary
             groups_str = ", ".join(f"'{g}'" for g in DEFAULT_GROUPS)
