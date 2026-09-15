@@ -42,6 +42,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from glob import glob
 from pathlib import Path
 
 import duckdb
@@ -112,6 +113,14 @@ def main() -> int:
         help="Build the merged parquet and print stats, but skip the R2 upload.",
     )
     args = parser.parse_args()
+
+    # No local delta parts means `hoodini download contig_lengths` found
+    # nothing new/missing since the last R2 publish (e.g. it was already run
+    # manually, or a prior cron run already merged everything). Nothing to
+    # do in that case -- exit cleanly instead of failing on an empty glob.
+    if not glob(LOCAL_PARTS_GLOB):
+        print("No local delta parquet parts found; nothing to merge. Skipping.")
+        return 0
 
     con = duckdb.connect(":memory:")
     con.execute("INSTALL httpfs; LOAD httpfs;")
