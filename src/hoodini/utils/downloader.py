@@ -47,13 +47,27 @@ def _fmt_bytes(n: float) -> str:
 def download_urls(
     urls,
     dest_dir,
-    connections=16,
+    *,
+    connections=4,
     show_progress=True,
     out_names=None,
     num_threads: int = 0,
+    max_retries=8,
+    retry_base_delay=2.0,
+    retry_max_delay=60.0,
+    max_retry_elapsed=300.0,
+    max_concurrent_files=2,
 ):
     """
-    Download URLs to dest_dir concurrently using bytehaul, with Rich progress.
+    Download URLs to dest_dir using bytehaul, with Rich progress.
+
+    Defaults are deliberately conservative: some servers (e.g. NCBI's FTP/HTTPS
+    mirrors) throttle or return HTTP 503 once too many concurrent connections
+    per IP are open. Downloading many URLs at once, each with its own pool of
+    connections, easily stacks up dozens of simultaneous connections, so at
+    most `max_concurrent_files` files are ever in flight together, and each
+    keeps a modest number of connections. The retry knobs give transient
+    rate-limiting time to clear.
 
     Returns a list of downloaded file paths.
     """
@@ -61,18 +75,56 @@ def download_urls(
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     out_name_list = _resolve_out_names(urls, out_names)
-    max_conn = num_threads or connections or 16
+    max_conn = num_threads or connections or 4
+    batch_size = max(1, max_concurrent_files)
 
     downloader = bytehaul.Downloader()
-    tasks = {
-        out_name: downloader.download(
+
+    def _start(url, out_name):
+        return downloader.download(
             url,
             output_dir=str(dest_dir),
             output_path=out_name,
             max_connections=max_conn,
+            max_retries=max_retries,
+            retry_base_delay=retry_base_delay,
+            retry_max_delay=retry_max_delay,
+            max_retry_elapsed=max_retry_elapsed,
         )
-        for url, out_name in zip(urls, out_name_list)
-    }
+
+    items = list(zip(urls, out_name_list))
+    tasks: dict[str, object] = {}
+
+    def _run_batch(batch, progress=None, progress_task_ids=None):
+        batch_tasks = {out_name: _start(url, out_name) for url, out_name in batch}
+        tasks.update(batch_tasks)
+        pending = set(batch_tasks)
+        while pending:
+            for out_name in list(pending):
+                snap = batch_tasks[out_name].progress()
+                if progress is not None:
+                    progress_task = progress_task_ids[out_name]
+                    if snap.total_size:
+                        progress.update(
+                            progress_task,
+                            total=snap.total_size,
+                            completed=snap.downloaded,
+                            bytes_text=(
+                                f"{_fmt_bytes(snap.downloaded)} / {_fmt_bytes(snap.total_size)}"
+                            ),
+                        )
+                    else:
+                        progress.update(
+                            progress_task,
+                            completed=snap.downloaded,
+                            bytes_text=_fmt_bytes(snap.downloaded),
+                        )
+                if snap.state in _TERMINAL_STATES:
+                    pending.discard(out_name)
+            if pending:
+                time.sleep(0.1)
+        for task in batch_tasks.values():
+            task.wait()
 
     try:
         if show_progress:
@@ -87,36 +139,14 @@ def download_urls(
                 transient=True,
             ) as progress:
                 progress_task_ids = {
-                    out_name: progress.add_task(out_name, total=None, bytes_text="…")
-                    for out_name in out_name_list
+                    out_name: progress.add_task(out_name, total=None, bytes_text="queued")
+                    for _, out_name in items
                 }
-
-                pending = set(out_name_list)
-                while pending:
-                    for out_name in list(pending):
-                        snap = tasks[out_name].progress()
-                        progress_task = progress_task_ids[out_name]
-                        if snap.total_size:
-                            progress.update(
-                                progress_task,
-                                total=snap.total_size,
-                                completed=snap.downloaded,
-                                bytes_text=(
-                                    f"{_fmt_bytes(snap.downloaded)} / {_fmt_bytes(snap.total_size)}"
-                                ),
-                            )
-                        else:
-                            progress.update(
-                                progress_task,
-                                completed=snap.downloaded,
-                                bytes_text=_fmt_bytes(snap.downloaded),
-                            )
-                        if snap.state in _TERMINAL_STATES:
-                            pending.discard(out_name)
-                    if pending:
-                        time.sleep(0.1)
-        for task in tasks.values():
-            task.wait()
+                for start in range(0, len(items), batch_size):
+                    _run_batch(items[start : start + batch_size], progress, progress_task_ids)
+        else:
+            for start in range(0, len(items), batch_size):
+                _run_batch(items[start : start + batch_size])
     except BaseException:
         for task in tasks.values():
             with contextlib.suppress(Exception):
