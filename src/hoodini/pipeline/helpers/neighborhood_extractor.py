@@ -187,9 +187,7 @@ def parse_gff_faa(gff_path: str, faa_path: str) -> pl.DataFrame:
             has_header=False,
             new_columns=gff_header,
             comment_prefix="#",
-            schema={
-                name: pl.Int64 if name in {"start", "end"} else pl.Utf8 for name in gff_header
-            },
+            schema={name: pl.Int64 if name in {"start", "end"} else pl.Utf8 for name in gff_header},
         )
     except Exception as e:
         raise NeighborhoodExtractionError(f"Failed to read GFF file {gff_path}: {e}")
