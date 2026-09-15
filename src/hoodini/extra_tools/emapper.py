@@ -1,11 +1,57 @@
+import gc
 import subprocess
 from importlib.resources import files
 from pathlib import Path
 from shutil import copyfile
 
+import pyarrow.parquet as pq
 import polars as pl
 
 from hoodini.utils.logging_utils import info, success, warn
+
+
+def _stream_filter_parquet_by_id(
+    path: str, ids: set[int], columns: list[str], id_col: str = "id"
+) -> pl.DataFrame:
+    """
+    Filter a large parquet file by a set of ids while keeping peak memory
+    bounded to roughly one row-group's decoded size, instead of DuckDB's
+    approach of decoding the whole (or nearly the whole) column set at once.
+
+    Real DIAMOND/eggNOG hit ids are scattered essentially uniformly across
+    the ~57M-row eggnog_prots table, so row-group pruning by id range never
+    helps: virtually every row group contains at least one match. The actual
+    memory hog is the wide `ogs` column (~2.7GB uncompressed, PLAIN-encoded),
+    which DuckDB must decode almost entirely to answer such a query, needing
+    8GB+ just for that lookup.
+
+    Reading and filtering one row group at a time keeps peak memory to the
+    size of a single decoded row group (tens of MB here) instead. The key
+    subtlety: naively appending `df.filter(...)` results still pins the
+    *entire* source row-group buffer in memory (Polars/Arrow keep a
+    zero-copy reference to the parent buffer even for a handful of matched
+    rows), so each kept chunk is forced through an Arrow `combine_chunks()`
+    round-trip to make a genuine compact copy before the row-group buffer is
+    released.
+    """
+    pf = pq.ParquetFile(path)
+    chunks: list[pl.DataFrame] = []
+    for rg_idx in range(pf.num_row_groups):
+        table = pf.read_row_group(rg_idx, columns=columns)
+        df = pl.from_arrow(table)
+        del table
+        filtered = df.filter(pl.col(id_col).is_in(ids))
+        del df
+        if filtered.height:
+            # Force a compact copy so the small result doesn't keep the
+            # whole (much larger) row-group buffer alive.
+            chunks.append(pl.from_arrow(filtered.to_arrow().combine_chunks()))
+        del filtered
+        gc.collect()
+
+    if not chunks:
+        return pl.DataFrame(schema={c: pl.Null for c in columns})
+    return pl.concat(chunks)
 
 
 def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 1) -> pl.DataFrame:
@@ -14,10 +60,12 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
     join to eggNOG metadata, pick the deepest OG per query,
     and return one row per input protein as a Polars DataFrame.
 
-    Uses DuckDB for memory-efficient querying of large eggnog_prots.parquet (2.4GB).
+    Streams the large eggnog_prots.parquet lookup row-group by row-group to
+    keep memory usage bounded regardless of hit count (see
+    `_stream_filter_parquet_by_id`).
     """
 
-    info("🧾\tRunning eggNOG-mapper (DIAMOND + eggNOG, best+deepest OG via DuckDB) ...")
+    info("🧾\tRunning eggNOG-mapper (DIAMOND + eggNOG, best+deepest OG) ...")
 
     output = Path(output)
     emapper_dir = output / "emapper"
@@ -124,53 +172,27 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
         "bigg_reaction",
     ]
 
-    try:
-        import duckdb
+    # Stream eggnog_prots.parquet row-group by row-group instead of loading it
+    # wholesale (via DuckDB or a single Polars filter): real DIAMOND hit ids
+    # are scattered across the whole ~57M-row table, so no amount of sorting
+    # or row-group pruning helps, and the wide `ogs` column alone needs 8GB+
+    # to decode in one shot. Streaming bounds peak memory to roughly one
+    # row-group's size (tens of MB) regardless of how many hits there are.
+    prot_id_set = set(prot_ids)
+    prots = _stream_filter_parquet_by_id(
+        eggnog_prots_path,
+        prot_id_set,
+        columns=["id", "name", "ogs", "pname"] + prot_cols,
+    ).rename({"id": "prot_id"})
 
-        con = duckdb.connect(":memory:")
-        con.execute('SET memory_limit = "4GB"')
-
-        # Create temp table for lookup IDs
-        con.register("lookup", pl.DataFrame({"id": prot_ids}, schema={"id": pl.Int64}))
-
-        prot_cols_sql = ", ".join(f'"{c}"' for c in prot_cols)
-        annotated = con.execute(
-            f"""
-            WITH filtered_prots AS (
-                SELECT id AS prot_id, name, ogs, pname, {prot_cols_sql}
-                FROM read_parquet('{eggnog_prots_path}')
-                WHERE id IN (SELECT id FROM lookup)
-            ),
-            exploded AS (
-                SELECT * EXCLUDE (ogs),
-                       UNNEST(string_split(COALESCE(ogs, ''), ',')) AS og_name
-                FROM filtered_prots
-            )
-            SELECT e.* EXCLUDE (og_name),
-                   o.og, o.level, o.depth, o.nm, o.ns,
-                   o.pname AS og_pname, o.description, o."COG_categories"
-            FROM exploded e
-            JOIN read_parquet('{eggnog_og_path}') o ON o.name = e.og_name
-            WHERE e.og_name != ''
-        """
-        ).pl()
-
-        con.close()
-
-    except Exception as e:
-        warn(f"DuckDB failed for eggnog lookup, falling back to Polars: {e}")
-        prots = (
-            pl.scan_parquet(eggnog_prots_path)
-            .filter(pl.col("id").is_in(prot_ids))
-            .rename({"id": "prot_id"})
-            .with_columns(pl.col("ogs").fill_null("").str.split(",").alias("og_name"))
-            .explode("og_name")
-            .filter(pl.col("og_name") != "")
-            .drop("ogs")
-            .collect()
-        )
-        og = pl.read_parquet(eggnog_og_path).rename({"pname": "og_pname"})
-        annotated = prots.join(og, left_on="og_name", right_on="name", how="inner").drop("og_name")
+    prots = (
+        prots.with_columns(pl.col("ogs").fill_null("").str.split(",").alias("og_name"))
+        .explode("og_name")
+        .filter(pl.col("og_name") != "")
+        .drop("ogs")
+    )
+    og = pl.read_parquet(eggnog_og_path).rename({"pname": "og_pname"})
+    annotated = prots.join(og, left_on="og_name", right_on="name", how="inner").drop("og_name")
 
     hits_annotated = hits_best.join(annotated, left_on="sseqid", right_on="prot_id", how="left")
 
