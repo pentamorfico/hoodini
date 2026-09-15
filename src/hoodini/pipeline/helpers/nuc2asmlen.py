@@ -40,9 +40,9 @@ def run_nuc2asmlen(accessions):
             con.execute('SET memory_limit = "4GB"')
             register_contig_table(con, parquet_path)
 
-            # Create temp table for lookup IDs
-            con.execute("CREATE TEMP TABLE lookup (nuc_id VARCHAR)")
-            con.executemany("INSERT INTO lookup VALUES (?)", [(a,) for a in query_accessions])
+            # register() scans the DataFrame directly (zero-copy) instead of
+            # inserting rows one at a time, which takes minutes for large lists.
+            con.register("lookup", pl.DataFrame({"nuc_id": query_accessions}))
 
             # Query with efficient semi-join
             matches = con.execute(

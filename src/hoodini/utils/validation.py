@@ -597,9 +597,9 @@ def uniprot2ncbi(df: pl.DataFrame) -> pl.DataFrame:
     con = duckdb.connect(":memory:")
     con.execute('SET memory_limit = "2GB"')
 
-    # Register the lookup IDs as a temp table
-    con.execute("CREATE TEMP TABLE lookup_ids (uniprot_ac VARCHAR)")
-    con.executemany("INSERT INTO lookup_ids VALUES (?)", [(uid,) for uid in to_map])
+    # Register the lookup IDs as a DuckDB view (zero-copy) instead of inserting
+    # rows one at a time via executemany, which takes minutes for large lists.
+    con.register("lookup_ids", pl.DataFrame({"uniprot_ac": to_map}))
 
     idmap = con.execute(
         f"""
