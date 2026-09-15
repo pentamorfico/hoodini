@@ -7,6 +7,12 @@ import polars as pl
 from hoodini.utils.downloader import download_urls
 from hoodini.utils.logging_utils import logger
 
+# Prebuilt copy, rebuilt daily by .github/workflows/update-assembly-summary.yml
+# whenever NCBI's source files change (see scripts/update_assembly_summary_r2.py).
+# Downloading this single merged parquet is far faster than fetching and
+# parsing the ~2 GB of raw NCBI TSVs locally; that path remains as a fallback.
+REMOTE_ASSEMBLY_SUMMARY_URL = "https://storage.hoodini.bio/assembly_summary.parquet"
+
 # NCBI fields are typed by name, never by their position or first few values.
 # All other fields (including future additions) remain strings. In particular,
 # PubMed IDs may contain semicolon-separated lists and isolates can start with 0.
@@ -174,12 +180,51 @@ def download_assembly_db(
 
 
 def download_assembly_summary_db(output_path: Path | None = None) -> Path:
-    """Convenience wrapper to download and merge RefSeq + GenBank assembly summaries."""
+    """Get RefSeq + GenBank assembly summaries, merged into a single parquet.
+
+    Tries the prebuilt copy on remote storage first (rebuilt daily, a single
+    ~100 MB download); falls back to downloading and merging the raw NCBI
+    files locally (~2 GB, much slower) if that is unavailable.
+    """
     from importlib.resources import files
 
     if output_path is None:
         output_path = files("hoodini").joinpath("data", "assembly_summary.parquet")
 
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if _download_prebuilt_assembly_summary(output_path):
+        return output_path
+
+    logger.info("Falling back to downloading and merging the raw NCBI assembly summary files...")
+    return _build_assembly_summary_from_ncbi(output_path)
+
+
+def _download_prebuilt_assembly_summary(output_path: Path) -> bool:
+    """Try to fetch the prebuilt merged parquet from remote storage. Returns success."""
+    from hoodini.download.databases import _download_url
+
+    logger.info(f"Downloading prebuilt assembly summary from {REMOTE_ASSEMBLY_SUMMARY_URL} ...")
+    staging_dir = Path(mkdtemp(prefix="assembly-summary-remote-", dir=output_path.parent))
+    try:
+        staged = staging_dir / output_path.name
+        if not _download_url(REMOTE_ASSEMBLY_SUMMARY_URL, staged, num_threads=4):
+            return False
+        if not staged.is_file() or staged.stat().st_size == 0:
+            return False
+        # Validate it's actually readable before replacing the destination.
+        pl.scan_parquet(staged).limit(1).collect()
+        staged.replace(output_path)
+        logger.info(f"Saved prebuilt assembly summary to {output_path}")
+        return True
+    except Exception as exc:
+        logger.warning(f"Could not use prebuilt assembly summary ({exc}); trying NCBI directly.")
+        return False
+    finally:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+
+
+def _build_assembly_summary_from_ncbi(output_path: Path) -> Path:
     columns = [
         "assembly_accession",
         "refseq_category",
