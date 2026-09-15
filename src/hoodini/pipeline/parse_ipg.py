@@ -169,8 +169,9 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
         # Use DuckDB for memory-efficient join
         con = duckdb.connect(":memory:")
         con.execute('SET memory_limit = "4GB"')
-        con.execute("CREATE TEMP TABLE asm_lookup (assembly_id VARCHAR)")
-        con.executemany("INSERT INTO asm_lookup VALUES (?)", [(a,) for a in assemblies_stripped])
+        # register() scans the DataFrame directly (zero-copy) instead of
+        # inserting rows one at a time, which takes minutes for large lists.
+        con.register("asm_lookup", pl.DataFrame({"assembly_id": assemblies_stripped}))
 
         ts = con.execute(
             f"""
@@ -199,8 +200,7 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
         # Use DuckDB for memory-efficient join
         con = duckdb.connect(":memory:")
         con.execute('SET memory_limit = "4GB"')
-        con.execute("CREATE TEMP TABLE asm_lookup2 (assembly_accession VARCHAR)")
-        con.executemany("INSERT INTO asm_lookup2 VALUES (?)", [(a,) for a in assemblies])
+        con.register("asm_lookup2", pl.DataFrame({"assembly_accession": assemblies}))
 
         summary = con.execute(
             f"""
@@ -323,8 +323,7 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
             con.execute('SET memory_limit = "4GB"')
 
             # Create temp table for lookup IDs
-            con.execute("CREATE TEMP TABLE lookup (nuc_id VARCHAR)")
-            con.executemany("INSERT INTO lookup VALUES (?)", [(n,) for n in nucs])
+            con.register("lookup", pl.DataFrame({"nuc_id": nucs}))
 
             register_contig_table(con, contig_path)
             # Query parquet with semi-join - DuckDB handles this efficiently
@@ -378,8 +377,7 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
 
             con = duckdb.connect(":memory:")
             con.execute('SET memory_limit = "4GB"')
-            con.execute("CREATE TEMP TABLE asm_lookup (assembly_id VARCHAR)")
-            con.executemany("INSERT INTO asm_lookup VALUES (?)", [(a,) for a in asm_list])
+            con.register("asm_lookup", pl.DataFrame({"assembly_id": asm_list}))
 
             asm_meta = con.execute(
                 f"""
@@ -455,10 +453,7 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
 
                         con = duckdb.connect(":memory:")
                         con.execute('SET memory_limit = "4GB"')
-                        con.execute("CREATE TEMP TABLE new_asm_lookup (assembly_id VARCHAR)")
-                        con.executemany(
-                            "INSERT INTO new_asm_lookup VALUES (?)", [(a,) for a in new_asm_list]
-                        )
+                        con.register("new_asm_lookup", pl.DataFrame({"assembly_id": new_asm_list}))
 
                         summary2 = con.execute(
                             f"""

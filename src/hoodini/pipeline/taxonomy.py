@@ -827,10 +827,9 @@ def _make_foldmason_tree(records, all_prot, output_dir, threads):
 
                 con = duckdb.connect(":memory:")
                 con.execute('SET memory_limit = "2GB"')
-                con.execute("CREATE TEMP TABLE lookup_ids (ncbi_id VARCHAR)")
-                con.executemany(
-                    "INSERT INTO lookup_ids VALUES (?)", [(pid,) for pid in needs_mapping]
-                )
+                # register() scans the DataFrame directly (zero-copy) instead of
+                # inserting rows one at a time, which takes minutes for large lists.
+                con.register("lookup_ids", pl.DataFrame({"ncbi_id": needs_mapping}))
 
                 # Reverse lookup: NCBI protein_id → UniProt accession
                 # Match against RefSeq and EMBL-CDS columns
