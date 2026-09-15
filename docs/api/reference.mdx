@@ -1049,23 +1049,115 @@ Helper functions and utilities.
 
 ### `utils.browser_setup`
 
-Browser setup utilities for installing and verifying Playwright dependencies.
+Browser setup utilities for ensuring lightpanda is available.
 
-This module ensures Playwright Firefox is available before use.
+This module ensures the `lightpanda` headless browser binary is installed
+and its CDP server is running before use. Unlike Playwright/Firefox, lightpanda
+is a single static binary (from bioconda) with no GTK/X11 dependencies, so
+"ensuring" it is available just means checking the binary exists and starting
+its `serve` process if needed.
 
-#### `ensure_playwright_firefox()`
+#### `ensure_lightpanda()`
 
 ```python
-def ensure_playwright_firefox() -> bool
+def ensure_lightpanda() -> bool
 ```
 
-Ensure Playwright Firefox is installed.
-
-Automatically installs Firefox if not already present.
-This should be called once per environment during initial setup.
+Ensure the lightpanda CDP server is available, starting it if needed.
 
 **Returns:**
-    True if Firefox is available or was successfully installed, False otherwise.
+    True if the lightpanda server is running (or was successfully
+    started), False otherwise.
+
+### `utils.cdp_browser`
+
+Minimal Chrome DevTools Protocol (CDP) client for driving lightpanda.
+
+Lightpanda (https://lightpanda.io/) is a lightweight, dependency-free headless
+browser distributed via bioconda. It exposes a standard CDP WebSocket server,
+so a small hand-rolled client built on `websocket-client` is enough to
+navigate pages, fill in forms and read back page state -- no Playwright, no
+Firefox, no GTK/X11 stack required.
+
+#### `find_lightpanda_binary()`
+
+```python
+def find_lightpanda_binary() -> str | None
+```
+
+Locate the `lightpanda` executable on PATH.
+
+#### `lightpanda_server_alive()`
+
+```python
+def lightpanda_server_alive(http_url: str = LIGHTPANDA_HTTP_URL) -> bool
+```
+
+Check whether a lightpanda CDP server is already listening.
+
+#### `start_lightpanda_server()`
+
+```python
+def start_lightpanda_server(lp_bin: str, wait_seconds: float = 15.0) -> bool
+```
+
+Start `lightpanda serve` in the background if it's not already running.
+
+**Returns:**
+    True if a new server was started, False if one was already alive.
+
+#### `CDPSession`
+
+A minimal synchronous CDP client over a single WebSocket connection.
+
+**Methods:**
+
+- `send()`
+
+  ```python
+  def send(method: str, params: dict | None = None, timeout: float = DEFAULT_COMMAND_TIMEOUT, session_id: str | None = None) -> dict
+  ```
+
+  Send a CDP command and block until its matching response arrives.
+
+- `wait_for_event()`
+
+  ```python
+  def wait_for_event(method: str, timeout: float = 30.0) -> bool
+  ```
+
+  Block until a CDP event of the given method name is received.
+
+- `open_page()`
+
+  ```python
+  def open_page(timeout: float = 60.0) -> str
+  ```
+
+  Create an isolated browser context + target and return its session id.
+
+- `navigate()`
+
+  ```python
+  def navigate(session_id: str, url: str, timeout: float = 120.0) -> None
+  ```
+
+  Navigate the page and wait for the load event to fire.
+
+- `evaluate()`
+
+  ```python
+  def evaluate(session_id: str, expression: str, timeout: float = 30.0)
+  ```
+
+  Evaluate JS in the page and return the resulting value.
+
+- `close()`
+
+  ```python
+  def close() -> None
+  ```
+
 
 ### `utils.classes`
 
@@ -1413,57 +1505,6 @@ mode (str): The mode to use for parsing ("ipg", "nucsum", "asssum", etc.).
 **Returns:**
 DataFrame: A concatenated DataFrame with the contents of all processed XML files.
 
-### `utils.playwright_utils`
-
-Playwright utilities for browser automation with proper environment setup.
-
-This module provides async helpers for Playwright Firefox that handle
-LD_LIBRARY_PATH setup for conda/pixi/mamba environments automatically.
-
-#### `get_browser_context()`
-
-```python
-def get_browser_context() -> AsyncGenerator[Page, None]
-```
-
-Context manager for async Playwright browser with proper environment setup.
-
-Automatically:
-- Sets up LD_LIBRARY_PATH for conda/pixi/mamba environments
-- Launches Firefox browser with appropriate arguments
-- Provides a page context for automation
-- Cleans up browser on exit
-
-**Yields:**
-    playwright.async_api.Page: Browser page for automation
-
-**Example:**
-    >>> async with get_browser_context() as page:
-    ...     await page.goto("https://example.com")
-    ...     await page.fill("#search", "query")
-
-#### `open_blast_page()`
-
-```python
-def open_blast_page(url: str) -> tuple[Page, str | None]
-```
-
-Open NCBI BLAST page and return page object for automation.
-
-This is a utility function for testing the Playwright setup.
-
-**Args:**
-    url: The NCBI BLAST URL to open
-
-**Returns:**
-    Tuple of (page object, error message if any)
-
-**Example:**
-    >>> page, error = await open_blast_page("https://blast.ncbi.nlm.nih.gov/...")
-    >>> if not error:
-    ...     # Automate BLAST workflow
-    ...     pass
-
 ### `utils.polars_adapters`
 
 Helpers to bridge pandas↔Polars at the edges of the codebase.
@@ -1501,53 +1542,6 @@ def rename_if_present(df: pl.DataFrame, mapping: Mapping[str, str]) -> pl.DataFr
 ```
 
 Rename columns that exist; ignore missing keys.
-
-### `utils.runtime_env`
-
-Runtime environment utilities for managing LD_LIBRARY_PATH across conda/pixi/mamba.
-
-This module handles automatic detection and setup of library paths needed by
-Playwright Firefox in conda/mamba/pixi environments without requiring sudo.
-
-#### `find_candidate_lib_dirs()`
-
-```python
-def find_candidate_lib_dirs() -> list[str]
-```
-
-Find candidate library directories from conda/mamba/pixi environments.
-
-Searches for:
-- $CONDA_PREFIX/lib (conda/mamba active environment)
-- ~/.pixi/envs/*/lib (pixi environments)
-- ~/.mamba/envs/*/lib (mamba environments)
-
-**Returns:**
-    List of absolute paths to lib directories, deduplicated and ordered.
-
-#### `verify_gtk_availability()`
-
-```python
-def verify_gtk_availability() -> str | None
-```
-
-Verify that GTK3 libraries are available in the current environment.
-
-**Returns:**
-    Path to the lib directory containing libgtk-3.so.0, or None if not found.
-
-#### `apply_ld_library_path()`
-
-```python
-def apply_ld_library_path() -> None
-```
-
-Apply LD_LIBRARY_PATH modifications for Playwright Firefox in conda/pixi/mamba.
-
-Prepends candidate library directories to LD_LIBRARY_PATH so that Playwright
-Firefox can find GTK3 and other required libraries.
-
-This should be called before launching Playwright browser instances.
 
 ### `utils.seq_io`
 

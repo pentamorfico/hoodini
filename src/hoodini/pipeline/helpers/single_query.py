@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-import os
+import json
 import re
 import subprocess
 import time
 from pathlib import Path
 
 import requests
-from playwright.sync_api import sync_playwright
 
-from hoodini.utils.browser_setup import ensure_playwright_firefox
+from hoodini.utils.browser_setup import ensure_lightpanda
+from hoodini.utils.cdp_browser import LIGHTPANDA_WS_URL, CDPSession
 from hoodini.utils.logging_utils import error, info, warn
-from hoodini.utils.runtime_env import apply_ld_library_path
 
 UNIPROT_RE = re.compile(r"^[A-NR-Z][0-9][A-Z0-9]{3}[0-9](?:-[0-9]+)?$")
 VALID_MAX_SEQS_BLASTP = [10, 50, 100, 250, 500, 1000, 5000]
@@ -28,17 +27,6 @@ def _pick_dropdown_value(max_targets: int, use_psiblast: bool = False) -> int:
         if max_targets <= opt:
             return opt
     return valid[-1]
-
-
-def _extract_rid(text: str) -> str | None:
-    """Extract RID from URL or HTML text."""
-    match = re.search(r"[&?]RID=([A-Z0-9]+)", text)
-    if match:
-        return match.group(1)
-    match = re.search(r"Request ID[^A-Z0-9]*([A-Z0-9]{11,12})", text)
-    if match:
-        return match.group(1)
-    return None
 
 
 def _looks_like_fasta(text: str) -> bool:
@@ -84,7 +72,7 @@ def _run_remote_blast(
     max_targets: int,
     db: str = "nr_cluster_seq",
 ) -> list[str]:
-    """Run remote BLAST via NCBI using Playwright Firefox.
+    """Run remote BLAST via NCBI using lightpanda (headless browser over CDP).
 
     Automatically switches to PSI-BLAST when ``max_targets`` exceeds 5000,
     since NCBI blastp caps at 5000 while PSI-BLAST supports up to 20000.
@@ -93,8 +81,8 @@ def _run_remote_blast(
     dropdown_value = _pick_dropdown_value(max_targets, use_psiblast=use_psiblast)
     program_label = "PSI-BLAST" if use_psiblast else "BLASTp"
 
-    if not ensure_playwright_firefox():
-        error("❌ Could not install Playwright Firefox")
+    if not ensure_lightpanda():
+        error("❌ Could not start lightpanda")
         return []
 
     info(f"🚀 {program_label} Search")
@@ -107,120 +95,147 @@ def _run_remote_blast(
         info(f"   Using PSI-BLAST (max_targets > {PSI_BLAST_THRESHOLD})")
     info("")
 
-    original_ld_path = os.environ.get("LD_LIBRARY_PATH")
-    apply_ld_library_path()
-
-    try:
-        return _playwright_blast(fasta_text, evalue, max_targets, dropdown_value, use_psiblast)
-    finally:
-        if original_ld_path is None:
-            os.environ.pop("LD_LIBRARY_PATH", None)
-        else:
-            os.environ["LD_LIBRARY_PATH"] = original_ld_path
+    return _lightpanda_blast(fasta_text, evalue, max_targets, dropdown_value, use_psiblast)
 
 
-def _playwright_blast(
+def _build_blast_submit_js(
+    fasta_text: str, evalue: float, dropdown_value: int, use_psiblast: bool
+) -> str:
+    """Build the in-page JS that fills the BLAST form fields and submits it.
+
+    Only the fields hoodini cares about are touched (QUERY, MAX_NUM_SEQ,
+    EXPECT and, when needed, the PSI-BLAST radio); everything else keeps the
+    page's own defaults. Submission uses ``form.submit()`` directly rather
+    than clicking the BLAST button, since that button has ``type="button"``
+    and is wired up via jQuery delegate handlers that lightpanda's synthetic
+    click events don't reliably trigger.
+    """
+    seq = re.sub(r"^>.*\n?", "", fasta_text).replace("\n", "").strip()
+    psi_js = (
+        """
+      var psiRadio = document.querySelector('input[name="BLAST_PROGRAMS"][value="psiBlast"]');
+      if (psiRadio) {
+        psiRadio.checked = true;
+        psiRadio.dispatchEvent(new Event('change', {bubbles: true}));
+      }
+        """
+        if use_psiblast
+        else ""
+    )
+    return f"""
+    (() => {{
+      var q = document.querySelector('textarea[name="QUERY"]') || document.querySelector('textarea');
+      if (!q) return {{ok: false, reason: 'query textarea not found'}};
+      q.focus();
+      q.value = {json.dumps(seq)};
+      q.dispatchEvent(new Event('input', {{bubbles: true}}));
+      q.dispatchEvent(new Event('change', {{bubbles: true}}));
+      {psi_js}
+      var maxSeqs = document.querySelector('select[name="MAX_NUM_SEQ"]');
+      if (maxSeqs) {{
+        var match = Array.from(maxSeqs.options).find(o => String(o.value) === String({dropdown_value}));
+        if (!match) {{
+          match = document.createElement('option');
+          match.value = String({dropdown_value});
+          match.text = String({dropdown_value});
+          maxSeqs.add(match);
+        }}
+        maxSeqs.value = match.value;
+        maxSeqs.dispatchEvent(new Event('change', {{bubbles: true}}));
+      }}
+      var expect = document.querySelector('input[name="EXPECT"]');
+      if (expect) {{
+        expect.value = {json.dumps(str(evalue))};
+        expect.dispatchEvent(new Event('input', {{bubbles: true}}));
+        expect.dispatchEvent(new Event('change', {{bubbles: true}}));
+      }}
+      var form = q.form;
+      if (!form) return {{ok: false, reason: 'form not found'}};
+      form.submit();
+      return {{ok: true}};
+    }})()
+    """
+
+
+def _lightpanda_blast(
     fasta_text: str,
     evalue: float,
     max_targets: int,
     dropdown_value: int,
     use_psiblast: bool,
 ) -> list[str]:
-    """Run the actual Playwright browser session for BLAST."""
-    with sync_playwright() as p:
-        browser = p.firefox.launch(headless=True)
-        page = browser.new_page(viewport={"width": 1920, "height": 1080})
+    """Run the actual lightpanda (CDP) browser session for BLAST."""
+    cdp = CDPSession(LIGHTPANDA_WS_URL)
+    try:
+        session_id = cdp.open_page()
+        cdp.navigate(session_id, "https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE=Proteins")
 
-        url = "https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE=Proteins"
-        page.goto(url, wait_until="networkidle")
-
-        if use_psiblast:
-            page.locator("text=PSI-BLAST (Position-Specific Iterated BLAST)").click()
-            time.sleep(0.5)
-
-        textarea = page.locator('textarea[aria-label*="accession"]').or_(
-            page.locator("textarea").first
-        )
-        textarea.wait_for(state="visible")
-        textarea.fill(fasta_text)
-
-        algo_params = page.locator("text=Algorithm parameters").first
-        algo_params.click()
-        time.sleep(0.5)
-
-        max_seqs_select = page.locator('select[name="MAX_NUM_SEQ"]')
-        max_seqs_select.wait_for(state="visible")
-        max_seqs_select.select_option(str(dropdown_value))
-
-        evalue_input = page.locator('input[name="EXPECT"]')
-        evalue_input.fill(str(evalue))
-
-        blast_btn = page.locator('#blastButton1 input[value="BLAST"]')
-        blast_btn.wait_for(state="visible")
-
-        with page.expect_navigation(timeout=60000, wait_until="commit"):
-            blast_btn.click(no_wait_after=True)
+        submit_js = _build_blast_submit_js(fasta_text, evalue, dropdown_value, use_psiblast)
+        submitted = None
+        for _attempt in range(5):
+            submitted = cdp.evaluate(session_id, submit_js)
+            if submitted and submitted.get("ok"):
+                break
+            time.sleep(1.5)
+        if not submitted or not submitted.get("ok"):
+            error(f"❌ Could not submit BLAST form: {submitted}")
+            return []
 
         rid = None
-        for attempt in range(10):
-            time.sleep(3)
-
-            current_url = page.url
-            match = re.search(r"[&?]RID=([A-Z0-9]+)", current_url)
-            if match:
-                rid = match.group(1)
-                break
-
-            content = page.content()
-            match = re.search(r"Request ID[^A-Z0-9]*([A-Z0-9]{11,12})", content)
-            if match:
-                rid = match.group(1)
+        for _attempt in range(10):
+            time.sleep(2)
+            rid = cdp.evaluate(
+                session_id,
+                "document.querySelector('input[name=\"RID\"]')"
+                " ? document.querySelector('input[name=\"RID\"]').value : null",
+            )
+            if rid:
                 break
 
         if not rid:
             error("❌ Could not find RID")
-            info(f"debug: Current URL: {page.url}")
-            info(f"debug: Page Title: {page.title()}")
-            content_snippet = page.content()[:1000].replace("\n", " ")
-            info(f"debug: Page Content Start: {content_snippet}...")
+            href = cdp.evaluate(session_id, "String(location.href)")
+            info(f"debug: Current URL: {href}")
+            return []
+    finally:
+        cdp.close()
+
+    status_url = (
+        f"https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Get&RID={rid}&FORMAT_OBJECT=SearchInfo"
+    )
+
+    for _i in range(600):
+        resp = requests.get(status_url)
+        text = resp.text
+
+        if "Status=READY" in text and "ThereAreHits=yes" in text:
+            break
+        elif "Status=FAILED" in text or "Status=UNKNOWN" in text:
+            error("❌ BLAST failed or unknown RID")
             return []
 
-        rid_clean = rid[4:] if rid.startswith("RID-") else rid
+        time.sleep(1)
 
-        status_url = f"https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Get&RID={rid_clean}&FORMAT_OBJECT=SearchInfo"
+    else:
+        error("⚠️ Timeout waiting for BLAST results.")
+        return []
 
-        for i in range(600):
-            resp = requests.get(status_url)
-            text = resp.text
+    download_url = f"https://blast.ncbi.nlm.nih.gov/Blast.cgi?RESULTS_FILE=on&RID={rid}&FORMAT_TYPE=CSV&DESCRIPTIONS={dropdown_value}&ALIGNMENT_VIEW=Tabular&CMD=Get"
 
-            if "Status=READY" in text and "ThereAreHits=yes" in text:
-                break
-            elif "Status=FAILED" in text or "Status=UNKNOWN" in text:
-                error("❌ BLAST failed or unknown RID")
-                return []
+    resp = requests.get(download_url)
+    content = resp.text
 
-            time.sleep(1)
+    all_lines = content.strip().split("\n")
+    data_lines = [line for line in all_lines if line and not line.startswith("#")]
+    limited_lines = data_lines[:max_targets]
 
-        else:
-            error("⚠️ Timeout waiting for BLAST results.")
-            return []
+    hits = []
+    for line in limited_lines:
+        cols = line.split(",")
+        if len(cols) >= 2:
+            hits.append(cols[1].strip().strip('"'))
 
-        download_url = f"https://blast.ncbi.nlm.nih.gov/Blast.cgi?RESULTS_FILE=on&RID={rid_clean}&FORMAT_TYPE=CSV&DESCRIPTIONS={dropdown_value}&ALIGNMENT_VIEW=Tabular&CMD=Get"
-
-        resp = requests.get(download_url)
-        content = resp.text
-
-        all_lines = content.strip().split("\n")
-        data_lines = [l for l in all_lines if l and not l.startswith("#")]
-        limited_lines = data_lines[:max_targets]
-
-        hits = []
-        for line in limited_lines:
-            cols = line.split(",")
-            if len(cols) >= 2:
-                hits.append(cols[1].strip().strip('"'))
-
-        return hits
+    return hits
 
 
 def prepare_single_query_input(

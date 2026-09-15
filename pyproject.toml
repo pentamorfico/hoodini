@@ -33,9 +33,9 @@ dependencies = [
 	"alphafetcher",
 	"jinja2",
 	"mappy",
-	"playwright>=1.40.0",
+	"websocket-client>=1.6.0",
 	"nest_asyncio>=1.6.0",
-	"cctyper @ git+https://github.com/pentamorfico/CRISPRCasTyper.git",
+	"cctyper>=1.9.0",
 	"tomli>=2.0.0",
 	"psutil>=5.9.0",
 	"duckdb>=0.9.0",
@@ -175,26 +175,13 @@ pigz = "*"
 ete3 = ">=3.1.3"
 alphafetcher = "*"
 diamondonpy = "*"
-playwright-python = ">=1.47,<1.48"
+websocket-client = ">=1.6.0"
 openssl = "*"
 certifi = "*"
 ca-certificates = "*"
 
 [tool.pixi.target.linux-64.dependencies]
-firefox = "*"
-gtk3 = "*"
-atk = "*"
-xorg-libxcomposite = "*"
-xorg-libxdamage = "*"
-xorg-libxfixes = "*"
-xorg-libxrandr = "*"
-xorg-libxrender = "*"
-xorg-libxext = "*"
-cairo = "*"
-pango = "*"
-gdk-pixbuf = "*"
-fontconfig = "*"
-alsa-lib = "*"
+lightpanda = "*"
 
 [tool.pixi.pypi-dependencies]
 hoodini = { path = ".", editable = true }
