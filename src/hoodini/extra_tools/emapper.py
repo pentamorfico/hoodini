@@ -10,14 +10,14 @@ from hoodini.utils.logging_utils import info, success, warn
 
 def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 1) -> pl.DataFrame:
     """
-    Run mmseqs easy-search, pick best hit per query directly in Polars,
+    Run DIAMOND blastp, pick best hit per query directly in Polars,
     join to eggNOG metadata, pick the deepest OG per query,
     and return one row per input protein as a Polars DataFrame.
 
     Uses DuckDB for memory-efficient querying of large eggnog_prots.parquet (2.4GB).
     """
 
-    info("🧾\tRunning eggNOG-mapper (mmseqs + eggNOG, best+deepest OG via DuckDB) ...")
+    info("🧾\tRunning eggNOG-mapper (DIAMOND + eggNOG, best+deepest OG via DuckDB) ...")
 
     output = Path(output)
     emapper_dir = output / "emapper"
@@ -35,46 +35,31 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
             seq_df.to_fasta("id", "sequence", fasta_path)
             success(f"Generated {fasta_path}")
 
-    mmseqs_dir = files("hoodini").joinpath("data", "emapper", "mmseqs")
-    mmseqs_db_padded = str(mmseqs_dir.joinpath("mmseqs.db_pad"))
-    mmseqs_db_unpadded = str(mmseqs_dir.joinpath("mmseqs.db"))
+    diamond_db = str(files("hoodini").joinpath("data", "emapper", "eggnog_proteins.dmnd"))
 
     results_m8 = emapper_dir / "results.m8"
-    tmpdir = emapper_dir / "mmseqs_tmp"
-    tmpdir.mkdir(parents=True, exist_ok=True)
 
-    def run_mmseqs(db_prefix: str, use_gpu: bool):
-        cmd = [
-            "mmseqs",
-            "easy-search",
-            str(fasta_path),
-            db_prefix,
-            str(results_m8),
-            str(tmpdir),
-            "--threads",
-            str(max(1, int(num_threads or 1))),
-        ]
-        if use_gpu:
-            cmd += ["--gpu", "1"]
-        info(f"Running: {' '.join(cmd)}")
-        subprocess.run(cmd, check=True)
-
-    try:
-        run_mmseqs(mmseqs_db_padded, use_gpu=True)
-    except subprocess.CalledProcessError:
-        warn("GPU search failed — retrying CPU (padded DB)...")
-        try:
-            run_mmseqs(mmseqs_db_padded, use_gpu=False)
-        except subprocess.CalledProcessError:
-            warn("CPU (padded DB) failed — trying unpadded DB GPU...")
-            try:
-                run_mmseqs(mmseqs_db_unpadded, use_gpu=True)
-            except subprocess.CalledProcessError:
-                warn("GPU (unpadded DB) failed — CPU unpadded DB...")
-                run_mmseqs(mmseqs_db_unpadded, use_gpu=False)
+    cmd = [
+        "diamond",
+        "blastp",
+        "-q",
+        str(fasta_path),
+        "-d",
+        diamond_db,
+        "-o",
+        str(results_m8),
+        "--threads",
+        str(max(1, int(num_threads or 1))),
+        "--max-target-seqs",
+        "1",
+        "--evalue",
+        "0.001",
+    ]
+    info(f"Running: {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)
 
     if not results_m8.exists():
-        warn(f"mmseqs results not found at {results_m8}")
+        warn(f"DIAMOND results not found at {results_m8}")
         return pl.DataFrame()
 
     hits_all = pl.read_csv(
@@ -102,13 +87,42 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
         .group_by("qseqid")
         .head(1)
         .select(["qseqid", "sseqid"])
+        .with_columns(pl.col("sseqid").cast(pl.Int64))
     )
 
     eggnog_prots_path = str(files("hoodini").joinpath("data", "emapper", "eggnog_prots.parquet"))
     eggnog_og_path = str(files("hoodini").joinpath("data", "emapper", "eggnog_og.parquet"))
 
-    # Get list of sseqids we need to look up
-    sseqids = hits_best["sseqid"].unique().to_list()
+    # Get list of sseqids we need to look up. DIAMOND/MMseqs2 report the
+    # subject as eggNOG's internal numeric protein id (eggnog_prots.parquet's
+    # `id` column), not the human-readable "taxid.locus" `name` string, so the
+    # lookup below joins on `id`.
+    prot_ids = hits_best["sseqid"].unique().to_list()
+
+    # eggNOG 7: eggnog_prots.parquet's `ogs` column is a comma-separated list of
+    # full OG identifiers ("cluster@taxid|clade[!]"), each of which matches
+    # eggnog_og.parquet's `name` column exactly, so we join on `name` directly
+    # instead of splitting into separate (og, level) parts and joining on both.
+    prot_cols = [
+        "gos",
+        "pfam",
+        "kegg_ko",
+        "kegg_ec",
+        "kegg_pathway",
+        "kegg_module",
+        "kegg_reaction",
+        "kegg_rclass",
+        "kegg_brite",
+        "kegg_tc",
+        "kegg_cazy",
+        "kegg_cog",
+        "kegg_disease",
+        "kegg_go",
+        "kegg_drug",
+        "kegg_pubmed",
+        "kegg_network",
+        "bigg_reaction",
+    ]
 
     try:
         import duckdb
@@ -117,81 +131,59 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
         con.execute('SET memory_limit = "4GB"')
 
         # Create temp table for lookup IDs
-        con.execute("CREATE TEMP TABLE lookup (name VARCHAR)")
-        con.executemany("INSERT INTO lookup VALUES (?)", [(s,) for s in sseqids])
+        con.execute("CREATE TEMP TABLE lookup (id BIGINT)")
+        con.executemany("INSERT INTO lookup VALUES (?)", [(pid,) for pid in prot_ids])
 
-        # Query eggnog_prots with filtering - only get rows we need
-        # Then explode OGs in DuckDB which is more memory efficient
-        prots = con.execute(
+        prot_cols_sql = ", ".join(f'"{c}"' for c in prot_cols)
+        annotated = con.execute(
             f"""
             WITH filtered_prots AS (
-                SELECT name, ogs
+                SELECT id AS prot_id, name, ogs, pname, {prot_cols_sql}
                 FROM read_parquet('{eggnog_prots_path}')
-                WHERE name IN (SELECT name FROM lookup)
+                WHERE id IN (SELECT id FROM lookup)
             ),
             exploded AS (
-                SELECT 
-                    name,
-                    UNNEST(string_split(COALESCE(ogs, ''), ',')) as og_level
+                SELECT * EXCLUDE (ogs),
+                       UNNEST(string_split(COALESCE(ogs, ''), ',')) AS og_name
                 FROM filtered_prots
             )
-            SELECT 
-                name,
-                split_part(og_level, '@', 1) as og,
-                split_part(og_level, '@', 2) as level
-            FROM exploded
-            WHERE og_level != '' AND og_level LIKE '%@%'
+            SELECT e.* EXCLUDE (og_name),
+                   o.og, o.level, o.depth, o.nm, o.ns,
+                   o.pname AS og_pname, o.description, o."COG_categories"
+            FROM exploded e
+            JOIN read_parquet('{eggnog_og_path}') o ON o.name = e.og_name
+            WHERE e.og_name != ''
         """
         ).pl()
 
         con.close()
 
     except Exception as e:
-        warn(f"DuckDB failed for eggnog_prots, falling back to Polars: {e}")
-        # Fallback to original Polars approach
+        warn(f"DuckDB failed for eggnog lookup, falling back to Polars: {e}")
         prots = (
             pl.scan_parquet(eggnog_prots_path)
-            .filter(pl.col("name").is_in(sseqids))
-            .with_columns(pl.col("ogs").fill_null("").str.split(",").alias("ogs_list"))
-            .explode("ogs_list")
-            .filter((pl.col("ogs_list") != "") & pl.col("ogs_list").str.contains("@"))
-            .with_columns(pl.col("ogs_list").str.split_exact("@", 1).alias("og_split"))
-            .with_columns(
-                [
-                    pl.col("og_split").struct.field("field_0").alias("og"),
-                    pl.col("og_split").struct.field("field_1").cast(pl.Utf8).alias("level"),
-                ]
-            )
-            .drop(["ogs_list", "og_split", "ogs"])
+            .filter(pl.col("id").is_in(prot_ids))
+            .rename({"id": "prot_id"})
+            .with_columns(pl.col("ogs").fill_null("").str.split(",").alias("og_name"))
+            .explode("og_name")
+            .filter(pl.col("og_name") != "")
+            .drop("ogs")
             .collect()
         )
+        og = pl.read_parquet(eggnog_og_path).rename({"pname": "og_pname"})
+        annotated = prots.join(og, left_on="og_name", right_on="name", how="inner").drop("og_name")
 
-    hits_prots = hits_best.join(prots, left_on="sseqid", right_on="name", how="left")
+    hits_annotated = hits_best.join(annotated, left_on="sseqid", right_on="prot_id", how="left")
 
-    # Use DuckDB for memory-efficient reading of eggnog_og.parquet
-    try:
-        con_og = duckdb.connect(":memory:")
-        con_og.execute('SET memory_limit = "4GB"')
-        og = con_og.execute(
-            f"""
-            SELECT *, CAST(level AS VARCHAR) as level
-            FROM read_parquet('{eggnog_og_path}')
-        """
-        ).pl()
-        con_og.close()
-    except Exception as e:
-        warn(f"DuckDB failed for eggnog_og, falling back to Polars: {e}")
-        og = pl.read_parquet(eggnog_og_path).with_columns(pl.col("level").cast(pl.Utf8))
-
-    annotated = hits_prots.join(og, on=["og", "level"], how="left", suffix="_og")
-
-    annotated = annotated.with_columns(pl.col("level").cast(pl.Int64, strict=False))
-    annotated = annotated.sort(["qseqid", "level"], descending=[False, True])
-    deepest = annotated.group_by("qseqid").head(1)
-    deepest = deepest.with_columns(pl.col("level").cast(pl.Utf8))
+    # Pick the deepest OG (highest `depth`) per query protein.
+    deepest = (
+        hits_annotated.sort(["qseqid", "depth"], descending=[False, True], nulls_last=True)
+        .group_by("qseqid")
+        .head(1)
+    )
 
     deepest = deepest.rename({"qseqid": "id"})
-    exclude_cols = {"level", "nm", "og", "ogs", "orthoindex", "sseqid", "name"}
+    exclude_cols = {"level", "nm", "sseqid", "name"}
     lead = ["id", "pname", "description", "COG_categories", "pfam"]
     lead_present = [c for c in lead if c in deepest.columns]
     rest = [c for c in deepest.columns if c not in lead_present and c not in exclude_cols]
@@ -201,5 +193,5 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
     info(deepest.head(10))
     info(f"shape: {deepest.shape}")
 
-    success(f"mmseqs annotations ready: {deepest.height} queries annotated")
+    success(f"DIAMOND annotations ready: {deepest.height} queries annotated")
     return deepest

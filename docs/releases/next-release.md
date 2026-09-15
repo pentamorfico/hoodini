@@ -1,0 +1,192 @@
+# Next release work log
+
+## Scope and working agreement
+
+- Working branch: `update/hoodini-next-release`.
+- Starting commit: `c58abd7933b46822b29851872bded5b4b1e88549` (`main`).
+- Started: 2026-09-07.
+- Release number and publication date are intentionally unset.
+- Keep implementation, validation results and remaining work in this file. Keep
+  user-facing release notes in the root `CHANGELOG.md`.
+- Commit related changes together and reference the original issue numbers.
+- An implemented fix is not a closed issue or a published release. Completion
+  requires its regression checks; release validation includes the full pipeline.
+
+## Issue inventory
+
+This inventory was checked against the 20 open issues and their comments. The
+first implementation batch addresses data correctness and taxonomy. Subsequent
+features remain candidates, not promised release content.
+
+| Issue | Scope | Status / next action |
+| --- | --- | --- |
+| [#83](https://github.com/pentamorfico/hoodini/issues/83) | Multi-contig GFF selection | Implemented and regression-tested on this branch. Full-pipeline release check remains. |
+| [#84](https://github.com/pentamorfico/hoodini/issues/84) | Mixed GBFF and GFF/FAA types | Implemented and regression-tested with real GFF/FAA and GBFF fixtures. |
+| [#86](https://github.com/pentamorfico/hoodini/issues/86) | Heterogeneous contig Parquet schemas | Implemented and regression-tested across reader, updater and writer paths. Large-dataset validation remains. |
+| [#81](https://github.com/pentamorfico/hoodini/issues/81) | NCBI domain taxonomy | Legacy-field compatibility and separate assembly-summary parser/update hardening implemented and regression-tested. Canonical-field migration and validation with the exact failing NCBI input remain. |
+| [#57](https://github.com/pentamorfico/hoodini/issues/57) | Optional database setup on later runs | Pending: inspect launcher and pipeline checks, including Colab. |
+| [#75](https://github.com/pentamorfico/hoodini/issues/75) | DefenseFinder / CasFinder compatibility | Pending: verify installed tool and model compatibility before choosing constraints. |
+| [#49](https://github.com/pentamorfico/hoodini/issues/49) | Run parameters in HTML | Pending: persist effective parameters and display them in the output. |
+| [#78](https://github.com/pentamorfico/hoodini/issues/78) | Copy filtered table cells | Pending: reproduce in hoodini-viz. |
+| [#76](https://github.com/pentamorfico/hoodini/issues/76) | Protein metadata links and copying | Pending: coordinate with the hoodini-viz table changes. |
+| [#79](https://github.com/pentamorfico/hoodini/issues/79) | Search neighborhood metadata | Pending: implement and verify in hoodini-viz. |
+| [#80](https://github.com/pentamorfico/hoodini/issues/80) | Mouse-wheel scrolling | Pending: implement and verify in hoodini-viz. |
+| [#13](https://github.com/pentamorfico/hoodini/issues/13) | Presence/absence heatmap | Pending: define feature aggregation and viewer layout. |
+| [#46](https://github.com/pentamorfico/hoodini/issues/46) | AAI/ANI trees and dereplication | Partially present on main: AAI/ANI trees; dereplication remains. |
+| [#17](https://github.com/pentamorfico/hoodini/issues/17) | Cluster representatives by context completeness | Pending: specify deterministic selection and integrate with dereplication. |
+| [#59](https://github.com/pentamorfico/hoodini/issues/59) | Streaming assemblies | Pending: define shared-assembly processing and interaction with --keep. |
+| [#4](https://github.com/pentamorfico/hoodini/issues/4) | Resistance annotation | Pending: choose supported tool/database and acceptance fixtures. |
+| [#3](https://github.com/pentamorfico/hoodini/issues/3) | BGC annotation | Pending: choose supported tool and acceptance fixtures. |
+| [#64](https://github.com/pentamorfico/hoodini/issues/64) | Scheduled contig-table builds | Pending: establish build resources and publication destination. |
+| [#85](https://github.com/pentamorfico/hoodini/issues/85) | Shared database updates | Pending: specify publication, trust and credentials. |
+| [#77](https://github.com/pentamorfico/hoodini/issues/77) | Bioconda package | Pending: verify dependencies, recipe and external review. |
+
+## Activity and evidence
+
+### 2026-09-07: branch and baseline inspection
+
+- Created the remote update branch from main and checked out the same base locally.
+- Read `AGENTS.md`, `CONTRIBUTING.md`, the test configuration and the current CI.
+- Confirmed the four priority defects are still present in the source.
+- Found an additional writer hazard within #86: PyArrow infers dictionary columns
+  from the first row, which can omit optional fields present in subsequent rows.
+- Created this issue inventory and the Unreleased changelog.
+
+### 2026-09-07: data-correctness batch
+
+- #83: select a single GFF contig before computing coordinate or gene-count
+  windows. Use the matching FNA record, infer the contig for unique protein IDs
+  or single-contig inputs, and report ambiguous/missing contigs explicitly.
+- #84: declare the nine GFF field types during CSV parsing, retaining score and
+  phase as strings compatible with GBFF. Skip comment lines at parse time.
+- #81: map domain into superkingdom only when the legacy rank has no value.
+  Preserve existing output columns and do not treat root ranks as domains.
+- #86: introduce a shared, lazy four-column contig scan. DuckDB combines schemas
+  by name and supplies typed nulls for absent optional accession columns; the
+  Polars fallback normalizes partitions individually before concatenation.
+- Apply that scan to nuc2asmlen, direct pipeline lookup and missing-assembly
+  detection. Keep the 4 GB DuckDB limit and close the touched query connections
+  on errors as well as success. The updater now uses its supplied summary path.
+- Preserve writer metadata from all buffered rows, including keys absent from
+  the first row, and use stable Arrow types for the four core lookup fields.
+- Added 30 regression cases in three test modules. The initial 28 cases produced
+  22 failures and 6 passes against the unmodified implementation, reproducing
+  the reported issues. Two additional selection guards were added afterward.
+- Updated the user-facing Unreleased changelog with the implemented behavior.
+
+### 2026-09-07: assembly-summary parsing and update integrity
+
+- Replaced sample-based CSV type inference with explicit types keyed by each
+  report's header. Accept a space after `#`, reordered columns and different
+  optional schemas in current/historical reports. Preserve text fields such as
+  isolate and PubMed lists even when their first values look numeric.
+- Validate header uniqueness, exact row widths, nonempty reports, accession
+  identifiers and numeric conversions. Missing selected optional columns receive
+  typed nulls; malformed records fail instead of being silently repaired.
+- Row-width validation performs an additional sequential read of each TSV with
+  bounded memory and reports physical line numbers. Large-file runtime has not
+  been benchmarked.
+- Download every requested report into a unique directory beside the destination.
+  Replace the Parquet atomically only after all requested reports and the staged
+  Parquet write succeed. Default updates require all four current/historical
+  RefSeq/GenBank sources. Retain failed downloads and log their directory for
+  inspection; ignore default staging directories in Git.
+- Propagate initial assembly-summary setup failures so initialization stops before
+  other database checks or forced removal of existing results. Load the single
+  query helper only when a literal query needs it.
+- Added 20 regression cases. The first 19 all failed against the original code;
+  after implementation they passed. Added an initialization guard as the final
+  case. Coverage includes a late text value after 1,100 numeric-looking values,
+  incomplete downloads, malformed rows and a simulated partial Parquet write.
+- These fixtures reproduce the inference mechanism and unsafe update behavior.
+  They do not establish the exact cause of the reporter's `column_26` failure;
+  the original failing NCBI file still needs validation.
+
+### Execution environment and publication notes
+
+- Local Git clone succeeded; terminal push lacked GitHub credentials. Repository
+  writes therefore use the authenticated GitHub connector. The documentation
+  baseline is commit `5781f344c0dc4b4831be9561ae581ff95c55bdcc`.
+- Conda/Mamba was unavailable locally and its bootstrap download was interrupted
+  by network approval. The full environment required by AGENTS.md for external
+  bioinformatics tools has not been set up or claimed as validated.
+- Used an isolated Python 3.12.13 environment for the Python regression suite,
+  following the Python-only approach of the existing CI. No external analysis
+  tools, live taxonomy downloads or complete NCBI databases were used by the new
+  tests. NCBI lineage responses are deterministic fixtures.
+- The initial orfipy build failed because the runtime requested missing clang;
+  rebuilding with the installed GCC/G++ succeeded. An interrupted installer
+  status was checked by an offline dependency check before running tests.
+- Key validation versions: Polars 1.44.1, DuckDB 1.5.5, PyArrow 25.0.1,
+  pytest 9.1.1, Biopython 1.88, gb-io 0.4.0, pyrodigal 3.7.1, orfipy 0.0.4,
+  ETE3 3.1.3, AlphaFetcher 0.2.0, Black 24.10.0, isort 9.0.1, Ruff 0.16.6.
+
+## Validation
+
+| Check | Result |
+| --- | --- |
+| `pytest tests/unit tests/integration -o addopts='' -q --tb=short --disable-warnings` | 85 passed, 5 skipped after the assembly-summary batch (first batch: 65 passed). The five existing skips require contig or assembly-summary databases. |
+| New regression cases | 50 passed (11 neighborhood, 7 taxonomy, 12 contig metadata, 20 assembly summary/initialization). |
+| Black and isort | Passed on the nine first-batch Python files and the three assembly-summary batch files. |
+| Ruff on the four new Python files | Passed. |
+| Ruff on the five modified Python files | Seven PLR0917 diagnostics, identical in count and rule to the original files at the starting commit. Pre-existing lint debt remains; the lint gate is not claimed to pass. |
+| Ruff on the three assembly-summary batch files | Passed. |
+| GitHub CI on commit `3f0a16ff65e0ad578705c7beae4b506d8a8a02ac` | Failed in Ruff with 19 PLR0917 diagnostics across the repository. Later checks, including pytest, were skipped. Local pytest results do not imply a green CI run. |
+| `git diff --check` | Passed. |
+| Full Conda/Bioconda pipeline, live NCBI access, large-database performance | Not run; required before release. |
+| Minimum supported Python/dependency versions | Not run locally; current-version results do not establish lower-bound compatibility. |
+
+The GFF regression uses an actual GBFF written by Biopython and read by gb-io.
+Contig tests exercise actual DuckDB/Polars queries and Parquet I/O, both partition
+orders, optional columns absent from an entire dataset, forced Polars fallback,
+pipeline enrichment and incremental writing. No synthetic test stubs replace
+the parsers or database engines under test. Assembly-summary tests mock only the
+download boundary and use actual TSV parsing and Parquet I/O, except for the
+deliberate disk-write failure simulation. They assert byte-for-byte preservation
+of the previous database and retention of the failed source files.
+
+## Next implementation batch
+
+### Assembly-summary diagnosis (2026-09-07)
+
+- This parser was not fixed by the first batch. The #86 changes concern the
+  separate contig metadata table; the #81 fix concerns taxonomic rank mapping.
+- The original assembly-summary parser inferred CSV types from 1,000 rows. A local
+  synthetic input with numeric values in that sample and later text reproduces
+  the reported class of error (text `bacteria` parsed as Int64). This reproduces
+  the mechanism, not the exact cause in the reporter's NCBI file. Null-only
+  samples did not reproduce the error with the tested Polars version.
+- NCBI documented the addition of columns 24 through 38 in June 2023. That
+  documented layout places `group` at column 25 and `genome_size` at column 26.
+  The reported text in `column_26` therefore also warrants checking for a
+  misaligned row/header or a newer layout. Do not assume a recent NCBI format
+  change, or treat an all-string parse as sufficient validation.
+- The current raw NCBI file/header could not be retrieved in this environment
+  (web retrieval failed; the direct HTTPS request timed out). The exact failing
+  download and row are still needed to distinguish inference from misalignment.
+- The original parser caught file-level errors, deleted failed source files,
+  and could write a database using only the successfully parsed sources. The
+  assembly-summary batch above corrects this alongside schema handling.
+- Implemented fix: resolve fields by each file's header; assign named field types;
+  validate accession identifiers, row widths and numeric conversions; retain useful
+  diagnostics; replace the existing Parquet only after every requested source succeeds.
+- Sources: [NCBI assembly-report changes (2023)](https://ncbiinsights.ncbi.nlm.nih.gov/2023/06/07/assembly_reports-genome_reports-ftp/)
+  and [NCBI taxonomy rank changes (2025)](https://ncbiinsights.ncbi.nlm.nih.gov/2025/02/27/new-ranks-ncbi-taxonomy/).
+
+1. Validate the assembly-summary changes with the exact failing NCBI report and
+   current full downloads; inspect its header and row if `column_26` still fails.
+2. Inspect #57 and #75 together using a real Conda environment and the Colab
+   launcher, then test tool/model compatibility and optional database setup.
+3. Add run provenance in the generated HTML (#49), excluding API keys.
+4. Coordinate table and search work in hoodini-viz (#78, #76, #79, #80) and test
+   the compiled viewer embedded in Hoodini output.
+
+## Release checklist
+
+- [x] Complete and regression-test the first data-correctness batch.
+- [x] Implement and regression-test assembly-summary parsing and atomic updates.
+- [x] Review additional release scope against the issue inventory.
+- [ ] Run the full Conda/Bioconda pipeline with representative local and downloaded data.
+- [ ] Verify viewer changes in the generated standalone HTML, if included.
+- [ ] Review the Unreleased notes and choose the release version.
+- [ ] Merge, tag and publish the release when ready.

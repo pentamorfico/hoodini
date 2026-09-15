@@ -1,0 +1,36 @@
+name: Update assembly summary (R2)
+
+on:
+  schedule:
+    # Daily at 03:00 UTC — cheap no-op (a few HEAD requests) unless NCBI's
+    # source files actually changed, in which case it rebuilds and republishes
+    # the merged parquet consumed by `hoodini.download.assembly_summary`.
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  update-assembly-summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install boto3
+
+      - name: Check for upstream changes and republish if needed
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python scripts/update_assembly_summary_r2.py

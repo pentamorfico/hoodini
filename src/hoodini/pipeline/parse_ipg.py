@@ -9,6 +9,7 @@ import polars as pl
 
 from hoodini.pipeline.helpers.fetch_ipg_from_accessions import fetch_ipg_from_accessions
 from hoodini.pipeline.helpers.nuc2asmlen import run_nuc2asmlen
+from hoodini.utils.contig_metadata import register_contig_table
 from hoodini.utils.logging_utils import info, warn
 from hoodini.utils.polars_adapters import to_polars
 
@@ -317,36 +318,36 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
 
         import duckdb
 
-        con = duckdb.connect(":memory:")
-        # Limit memory to prevent OOM - DuckDB will spill to disk if needed
-        con.execute('SET memory_limit = "4GB"')
+        with duckdb.connect(":memory:") as con:
+            # Limit memory to prevent OOM - DuckDB will spill to disk if needed
+            con.execute('SET memory_limit = "4GB"')
 
-        # Create temp table for lookup IDs
-        con.execute("CREATE TEMP TABLE lookup (nuc_id VARCHAR)")
-        con.executemany("INSERT INTO lookup VALUES (?)", [(n,) for n in nucs])
+            # Create temp table for lookup IDs
+            con.execute("CREATE TEMP TABLE lookup (nuc_id VARCHAR)")
+            con.executemany("INSERT INTO lookup VALUES (?)", [(n,) for n in nucs])
 
-        # Query parquet with semi-join - DuckDB handles this efficiently
-        result_df = con.execute(
-            f"""
-            SELECT nucleotide_id, assembly_id, sequence_length FROM (
-                SELECT genbankAccession as nucleotide_id,
-                       assemblyAccession as assembly_id,
-                       length as sequence_length
-                FROM read_parquet('{contig_path}')
-                WHERE genbankAccession IN (SELECT nuc_id FROM lookup)
-                UNION
-                SELECT refseqAccession as nucleotide_id,
-                       assemblyAccession as assembly_id,
-                       length as sequence_length
-                FROM read_parquet('{contig_path}')
-                WHERE refseqAccession IN (SELECT nuc_id FROM lookup)
-            )
-        """
-        ).pl()
+            register_contig_table(con, contig_path)
+            # Query parquet with semi-join - DuckDB handles this efficiently
+            result_df = con.execute(
+                """
+                SELECT nucleotide_id, assembly_id, sequence_length FROM (
+                    SELECT genbankAccession as nucleotide_id,
+                           assemblyAccession as assembly_id,
+                           length as sequence_length
+                    FROM hoodini_contigs
+                    WHERE genbankAccession IN (SELECT nuc_id FROM lookup)
+                    UNION
+                    SELECT refseqAccession as nucleotide_id,
+                           assemblyAccession as assembly_id,
+                           length as sequence_length
+                    FROM hoodini_contigs
+                    WHERE refseqAccession IN (SELECT nuc_id FROM lookup)
+                )
+            """
+            ).pl()
 
-        # Deduplicate
-        nuc_map = result_df.unique(subset=["nucleotide_id"], keep="first")
-        con.close()
+            # Deduplicate
+            nuc_map = result_df.unique(subset=["nucleotide_id"], keep="first")
 
         info(f"✅  Found {nuc_map.height} matches in contig_lengths")
 
