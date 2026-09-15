@@ -9,7 +9,6 @@ dependencies:
   - openssl
   - certifi
   - ca-certificates
-  - entrez-direct
   - pigz
   - blast
   - diamond

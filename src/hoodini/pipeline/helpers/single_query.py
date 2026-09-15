@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 import time
 from pathlib import Path
 
@@ -13,6 +12,7 @@ import requests
 from hoodini.utils.browser_setup import ensure_lightpanda
 from hoodini.utils.cdp_browser import LIGHTPANDA_WS_URL, CDPSession
 from hoodini.utils.logging_utils import error, info, warn
+from hoodini.utils.ncbi_eutils import efetch
 
 UNIPROT_RE = re.compile(r"^[A-NR-Z][0-9][A-Z0-9]{3}[0-9](?:-[0-9]+)?$")
 VALID_MAX_SEQS_BLASTP = [10, 50, 100, 250, 500, 1000, 5000]
@@ -34,7 +34,7 @@ def _looks_like_fasta(text: str) -> bool:
 
 
 def _fetch_fasta_for_id(prot_id: str) -> str:
-    """Fetch protein FASTA from NCBI (efetch) or UniProt."""
+    """Fetch protein FASTA from NCBI (efetch.fcgi) or UniProt."""
     prot_id = prot_id.strip()
     if UNIPROT_RE.match(prot_id):
         url = f"https://rest.uniprot.org/uniprotkb/{prot_id}.fasta"
@@ -46,19 +46,10 @@ def _fetch_fasta_for_id(prot_id: str) -> str:
         except Exception as e:
             warn(f"UniProt fetch error for {prot_id}: {e}")
 
-    cmd = [
-        "efetch",
-        "-db",
-        "protein",
-        "-id",
-        prot_id,
-        "-format",
-        "fasta",
-    ]
     try:
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=30)
-        if result.stdout and result.stdout.strip().startswith(">"):
-            return result.stdout
+        text = efetch(db="protein", ids=prot_id, rettype="fasta", retmode="text", timeout=30)
+        if text and text.strip().startswith(">"):
+            return text
         error(f"efetch returned no FASTA for {prot_id}")
         return ""
     except Exception as e:

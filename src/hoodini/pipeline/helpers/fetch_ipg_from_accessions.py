@@ -1,8 +1,6 @@
 import argparse
 import os
-import subprocess
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from io import StringIO
@@ -19,6 +17,7 @@ from rich.progress import (
 )
 
 from hoodini.utils.logging_utils import error, info, warn
+from hoodini.utils.ncbi_eutils import efetch_with_retries
 
 TOOL = "ipg_fetcher"
 CHUNK_SIZE = 100
@@ -31,70 +30,27 @@ MAX_PARALLEL = MAX_WORKERS
 
 
 def _efetch_chunk(accessions: list[str]) -> str:
-    joined_ids = ",".join(accessions)
-    cmd = [
-        "efetch",
-        "-db",
-        "protein",
-        "-id",
-        joined_ids,
-        "-format",
-        "ipg",
-        "-mode",
-        "text",
-        "-tool",
-        TOOL,
-    ]
-
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=90)
-            if not result.stdout or not result.stdout.strip():
-                if (
-                    "500" in result.stderr or "ERROR" in result.stderr
-                ) and attempt < max_retries - 1:
-                    warn(
-                        f"efetch error 500/network issue (attempt {attempt + 1}/{max_retries}), retrying in 5s..."
-                    )
-                    time.sleep(5)
-                    continue
-                warn(
-                    f"efetch returned empty for IDs: {accessions[:3]}... (stderr: {result.stderr[:200]})"
-                )
-            return result.stdout
-        except subprocess.CalledProcessError as e:
-            if attempt < max_retries - 1:
-                warn(
-                    f"efetch failed (attempt {attempt + 1}/{max_retries}): {e.stderr[:200]}, retrying..."
-                )
-                time.sleep(5)
-                continue
-            error(
-                f"efetch failed for IDs {accessions[:3]}... after {max_retries} attempts: {e.stderr[:500]}"
-            )
-            return ""
-        except subprocess.TimeoutExpired:
-            if attempt < max_retries - 1:
-                warn(f"efetch timeout (attempt {attempt + 1}/{max_retries}), retrying...")
-                time.sleep(5)
-                continue
-            error(f"efetch timeout for IDs {accessions[:3]}... after {max_retries} attempts")
-            return ""
-
-    return ""
+    try:
+        return efetch_with_retries(
+            db="protein",
+            ids=accessions,
+            rettype="ipg",
+            retmode="text",
+            api_key=NCBI_API_KEY,
+            tool=TOOL,
+            timeout=90,
+            max_retries=3,
+            backoff_seconds=5,
+        )
+    except RuntimeError as e:
+        error(f"efetch failed for IDs {accessions[:3]}...: {e}")
+        return ""
 
 
 def fetch_ipg_from_accessions(accessions: list[str]) -> pl.DataFrame:
     """
     Fetch IPG data for a list of protein accessions in parallel with rate limiting.
     """
-    try:
-        subprocess.run(["efetch", "-version"], check=True, capture_output=True, timeout=5)
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
-        error(f"efetch not available or not working: {e}")
-        return pl.DataFrame()
-
     semaphore = threading.Semaphore(MAX_PARALLEL)
     chunks = [accessions[i : i + CHUNK_SIZE] for i in range(0, len(accessions), CHUNK_SIZE)]
     results = [None] * len(chunks)
@@ -150,7 +106,7 @@ def fetch_ipg_from_accessions(accessions: list[str]) -> pl.DataFrame:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Retrieve IPG data using local efetch for protein accessions."
+        description="Retrieve IPG data via NCBI's efetch.fcgi for protein accessions."
     )
     parser.add_argument("input", help="Input file with protein accessions (one per line)")
     parser.add_argument("-o", "--output", help="Output TSV file to save IPG results", required=True)
