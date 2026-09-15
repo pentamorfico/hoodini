@@ -1,27 +1,4 @@
 #!/usr/bin/env python
-"""Rebuild the merged NCBI assembly summary parquet and publish it to R2.
-
-Run daily by .github/workflows/update-assembly-summary.yml. This is
-intentionally *not* part of the hoodini package: it needs boto3 (an R2/S3
-client) which end users installing hoodini have no reason to pull in.
-
-What it does:
-1. HEAD the 4 NCBI assembly summary TSVs (refseq/genbank x current/historical)
-   and compare their ETag/Last-Modified/Content-Length against the manifest
-   published alongside the last build (also stored in R2).
-2. If nothing changed, exit without downloading/uploading anything.
-3. Otherwise, download and merge the 4 files with hoodini's existing
-   assembly_summary parsing code, then upload the resulting parquet plus an
-   updated manifest to R2 (both under the same public bucket/domain that
-   already serves hoodini's other prebuilt databases).
-
-Required environment variables (set as GitHub Actions secrets):
-- R2_ACCOUNT_ID
-- R2_ACCESS_KEY_ID
-- R2_SECRET_ACCESS_KEY
-- R2_BUCKET_NAME
-"""
-
 from __future__ import annotations
 
 import json

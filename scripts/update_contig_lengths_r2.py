@@ -1,40 +1,4 @@
 #!/usr/bin/env python
-"""Merge newly downloaded contig lengths into the published R2 parquet.
-
-This is intentionally *not* part of the hoodini package (same rationale as
-update_assembly_summary_r2.py): it's a maintenance script run by hand (or via
-s5cmd/r2cmd for the upload step), not something end users need.
-
-Background:
-- `hoodini download contig_lengths` only fetches assemblies that are *missing*
-  from the local `src/hoodini/data/contig_lengths/*.parquet` dataset **and**
-  newer than the R2 published copy's Last-Modified date (see
-  `hoodini.download.contig_lengths`). It never re-downloads what's already on
-  R2, so the local dataset only ever contains the "delta" since the last R2
-  publish.
-- The local dataset's schema has grown over time and now has 4 extra columns
-  (`gcPercent`, `sequenceName`, `sortOrder`, `unlocalizedCount`) that the
-  currently published R2 parquet does not have. To keep the published schema
-  stable for existing consumers, this script drops those extra columns when
-  merging -- it does NOT attempt to backfill them into old R2 rows.
-
-What it does:
-1. Reads the remote contig_lengths.parquet schema/rows via DuckDB httpfs.
-2. Reads the local delta parts, keeping only the columns that already exist
-   in the remote schema.
-3. Anti-joins on assemblyAccession (local wins if somehow overlapping) and
-   concatenates, writing a single new parquet.
-4. Uploads the result to R2 via s5cmd (the `r2cmd` shell alias), replacing
-   contig_lengths.parquet in place.
-
-Usage:
-    python scripts/update_contig_lengths_r2.py [--dry-run]
-
-Requires:
-- duckdb, s5cmd (invoked via the same AWS_PROFILE=cloudflare-r2 endpoint used
-  by the `r2cmd` shell alias -- no boto3 dependency needed here).
-"""
-
 from __future__ import annotations
 
 import argparse
