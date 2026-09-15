@@ -24,6 +24,7 @@ from rich.progress import (  # type: ignore[import]
 
 from hoodini.download.assembly_summary import download_assembly_summary_db
 from hoodini.pipeline.helpers.prefetch_links import get_prefetched_link_table
+from hoodini.utils.contig_metadata import register_contig_table, scan_contig_table
 from hoodini.utils.logging_utils import console
 
 NCBI_API_KEY: str | None = os.environ.get("NCBI_API_KEY")
@@ -102,58 +103,57 @@ def get_missing_contigs_from_summary(
             latest_mtime = max(p.stat().st_mtime for p in all_parquet_files)
 
     try:
-        con = duckdb.connect(":memory:")
-        con.execute('SET memory_limit = "4GB"')
+        with duckdb.connect(":memory:") as con:
+            con.execute('SET memory_limit = "4GB"')
 
-        # Create temp table for allowed assemblies if provided
-        if allowed_assemblies_df is not None:
-            allowed_list = allowed_assemblies_df["assembly_accession"].to_list()
-            con.execute("CREATE TEMP TABLE allowed_asm (assembly_accession VARCHAR)")
-            con.executemany("INSERT INTO allowed_asm VALUES (?)", [(a,) for a in allowed_list])
+            # Create temp table for allowed assemblies if provided
+            if allowed_assemblies_df is not None:
+                allowed_list = allowed_assemblies_df["assembly_accession"].to_list()
+                con.execute("CREATE TEMP TABLE allowed_asm (assembly_accession VARCHAR)")
+                con.executemany("INSERT INTO allowed_asm VALUES (?)", [(a,) for a in allowed_list])
 
-        # Build the query for valid assemblies from assembly_summary
-        groups_str = ", ".join(f"'{g}'" for g in DEFAULT_GROUPS)
-        summary_query = f"""
-            SELECT DISTINCT CAST(assembly_accession AS VARCHAR) as assembly_accession
-            FROM read_parquet('{str(ASSEMBLY_SUMMARY)}')
-            WHERE "group" IN ({groups_str})
-              AND ftp_path IS NOT NULL
-              AND TRIM(ftp_path) != ''
-              AND LOWER(ftp_path) != 'na'
-        """
-
-        if allowed_assemblies_df is not None:
-            summary_query += (
-                " AND assembly_accession IN (SELECT assembly_accession FROM allowed_asm)"
-            )
-
-        if all_parquet_files:
-            # Query existing contig assemblies and do anti-join
-            contig_glob = str(CONTIG_LENGTHS_DIR / "*.parquet")
-            missing_df = con.execute(
-                f"""
-                WITH summary AS ({summary_query}),
-                existing AS (
-                    SELECT DISTINCT CAST(assemblyAccession AS VARCHAR) as assembly_accession
-                    FROM read_parquet('{contig_glob}')
-                )
-                SELECT s.assembly_accession
-                FROM summary s
-                LEFT JOIN existing e ON s.assembly_accession = e.assembly_accession
-                WHERE e.assembly_accession IS NULL
+            # Build the query for valid assemblies from assembly_summary
+            groups_str = ", ".join(f"'{g}'" for g in DEFAULT_GROUPS)
+            summary_query = f"""
+                SELECT DISTINCT CAST(assembly_accession AS VARCHAR) as assembly_accession
+                FROM read_parquet('{str(assembly_summary_path)}')
+                WHERE "group" IN ({groups_str})
+                  AND ftp_path IS NOT NULL
+                  AND TRIM(ftp_path) != ''
+                  AND LOWER(ftp_path) != 'na'
             """
-            ).pl()
-        else:
-            console.log("No existing contig_lengths found, will download all")
-            missing_df = con.execute(summary_query).pl()
 
-        con.close()
+            if allowed_assemblies_df is not None:
+                summary_query += (
+                    " AND assembly_accession IN (SELECT assembly_accession FROM allowed_asm)"
+                )
+
+            if all_parquet_files:
+                # Query existing contig assemblies and do anti-join
+                contig_glob = str(CONTIG_LENGTHS_DIR / "*.parquet")
+                register_contig_table(con, contig_glob)
+                missing_df = con.execute(
+                    f"""
+                    WITH summary AS ({summary_query}),
+                    existing AS (
+                        SELECT DISTINCT CAST(assemblyAccession AS VARCHAR) as assembly_accession
+                        FROM hoodini_contigs
+                    )
+                    SELECT s.assembly_accession
+                    FROM summary s
+                    LEFT JOIN existing e ON s.assembly_accession = e.assembly_accession
+                    WHERE e.assembly_accession IS NULL
+                """
+                ).pl()
+            else:
+                console.log("No existing contig_lengths found, will download all")
+                missing_df = con.execute(summary_query).pl()
 
     except Exception as e:
         console.log(f"⚠️  DuckDB failed, falling back to Polars streaming: {e}")
         # Fallback to Polars if DuckDB fails
         summary_lf = (
-            pl.scan_parquet(str(ASSEMBLY_SUMMARY))
+            pl.scan_parquet(str(assembly_summary_path))
             .filter(
                 (pl.col("group").is_in(DEFAULT_GROUPS))
                 & pl.col("ftp_path").is_not_null()
@@ -171,7 +171,7 @@ def get_missing_contigs_from_summary(
             )
         if all_parquet_files:
             contig_lf = (
-                pl.scan_parquet(
+                scan_contig_table(
                     str(CONTIG_LENGTHS_DIR / "*.parquet"),
                 )
                 .select(pl.col("assemblyAccession").cast(pl.Utf8).alias("assembly_accession"))
@@ -225,7 +225,23 @@ class PartRotatingWriter:
         return max_id + 1
 
     def _write_once(self, rows: list[dict[str, Any]]) -> int:
-        table = pa.Table.from_pylist(rows)
+        # Infer optional metadata from every row, not just the first. Keep the
+        # lookup schema stable even in partitions without RefSeq accessions.
+        core_types = {
+            "genbankAccession": pa.string(),
+            "refseqAccession": pa.string(),
+            "assemblyAccession": pa.string(),
+            "length": pa.int64(),
+        }
+        columns = dict.fromkeys(core_types)
+        for row in rows:
+            columns.update(dict.fromkeys(row))
+        table = pa.table(
+            {
+                name: pa.array([row.get(name) for row in rows], type=core_types.get(name))
+                for name in columns
+            }
+        )
         tmp = self.dir / f"part-{self.part_idx:05d}.parquet.tmp"
         pq.write_table(table, tmp, compression="zstd")
         return tmp.stat().st_size

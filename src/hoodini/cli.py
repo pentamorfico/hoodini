@@ -226,7 +226,10 @@ def cli():
     "--ncrna",
     type=str,
     default=None,
-    help="ncRNA prediction: path to CM file OR comma-separated RFAM IDs (e.g., RF00001,RF00234).",
+    help=(
+        "ncRNA prediction with pyinfernal (Infernal): path to CM file OR "
+        "comma-separated RFAM IDs (e.g., RF00001,RF00234)."
+    ),
 )
 @click.option("--cctyper", is_flag=True, help="Run CCtyper for CRISPR-Cas prediction.")
 @click.option("--trna", is_flag=True, help="Run tRNA/tmRNA detection with pyaragorn (ARAGORN).")
@@ -398,7 +401,7 @@ def download_contig_lengths(api_key, skip_assembly_summary):
 @click.option("--skip-padloc", is_flag=True, help="Skip padloc DB update.")
 @click.option("--skip-deffinder", is_flag=True, help="Skip defense-finder model install.")
 @click.option("--skip-genomad", is_flag=True, help="Skip GenoMAD download.")
-@click.option("--skip-emapper", is_flag=True, help="Skip downloading emapper/mmseqs DB.")
+@click.option("--skip-emapper", is_flag=True, help="Skip downloading emapper/DIAMOND DB.")
 @click.option("--skip-parquet", is_flag=True, help="Skip downloading eggNOG parquet support files.")
 @click.option(
     "--skip-contig-lengths", is_flag=True, help="Skip downloading contig_lengths.parquet."
@@ -412,7 +415,7 @@ def download_contig_lengths(api_key, skip_assembly_summary):
     "num_threads",
     type=int,
     default=0,
-    help="Number of threads for aria2c and pigz (0 = use all cores).",
+    help="Number of threads for downloads and pigz (0 = use all cores).",
 )
 def download_databases(
     force,

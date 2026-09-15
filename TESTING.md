@@ -36,6 +36,23 @@ python tests/feature_coverage/run_pipeline_matrix.py --utils
 
 ## Adding Tests
 
+### Data-correctness regressions
+
+The following tests use small local GFF/FAA/FNA, GBFF, assembly-summary TSV and Parquet fixtures, plus
+deterministic NCBI lineage responses. They do not download production databases
+or invoke external bioinformatics executables:
+
+```bash
+pytest tests/unit/test_neighborhood_inputs.py tests/unit/test_taxonomy_ranks.py tests/unit/test_contig_metadata.py tests/unit/test_assembly_summary.py
+```
+
+They cover issues #83, #84, #81 and #86. Run these within the normal development
+environment. Full pipeline tests and release validation remain separate gates.
+Assembly-summary tests mock downloads while using actual Polars parsing and
+Parquet I/O. They verify schema handling, malformed inputs, incomplete downloads,
+preservation of the existing database after failures, and initialization failure
+before existing result files can be removed.
+
 ### Unit Test
 ```python
 # tests/unit/test_<module>.py

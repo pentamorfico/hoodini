@@ -64,6 +64,21 @@ def fill_empty_with_previous(rows):
     return filled
 
 
+def _find_bacdive_assembly_column(header: list[str]) -> int:
+    """Find the INSDC assembly accession column in a BacDive CSV header.
+
+    BacDive has changed this column's exact label over time (observed:
+    "INSDC accession" -> "INSDC genome accesion", note the missing "s"),
+    so match loosely on "insdc" + "accession"/"accesion" instead of an
+    exact string.
+    """
+    for i, name in enumerate(header):
+        lowered = name.strip().lower()
+        if "insdc" in lowered and ("accession" in lowered or "accesion" in lowered):
+            return i
+    raise ValueError(f"Could not find an INSDC accession column in BacDive CSV header: {header}")
+
+
 def parse_bacdive_csv(in_path, out_path):
     logger.info(f"Parsing BacDive CSV: {in_path}")
     with open(in_path, newline="", encoding="utf-8") as f:
@@ -79,7 +94,7 @@ def parse_bacdive_csv(in_path, out_path):
     data_filled = fill_empty_with_previous(data)
     idx_id = header.index("ID")
     idx_strain = header.index("strain_number_header")
-    idx_assembly = header.index("INSDC accession")
+    idx_assembly = _find_bacdive_assembly_column(header)
     out_header = ["bacdive_id", "collection_id", "assembly_id"]
     out_rows = []
     for row in data_filled:
@@ -232,7 +247,7 @@ def main():
             b_data_filled = fill_empty_with_previous(b_data)
             idx_id = b_header.index("ID")
             idx_strain = b_header.index("strain_number_header")
-            idx_assembly = b_header.index("INSDC accession")
+            idx_assembly = _find_bacdive_assembly_column(b_header)
             b_rows = []
             for row in b_data_filled:
                 if len(row) < max(idx_id, idx_strain, idx_assembly) + 1:

@@ -1,10 +1,37 @@
-import contextlib
+import shutil
 from pathlib import Path
+from tempfile import mkdtemp
 
 import polars as pl
 
-from hoodini.utils.downloader import download_with_aria2c
+from hoodini.utils.downloader import download_urls
 from hoodini.utils.logging_utils import logger
+
+# Prebuilt copy, rebuilt daily by .github/workflows/update-assembly-summary.yml
+# whenever NCBI's source files change (see scripts/update_assembly_summary_r2.py).
+# Downloading this single merged parquet is far faster than fetching and
+# parsing the ~2 GB of raw NCBI TSVs locally; that path remains as a fallback.
+REMOTE_ASSEMBLY_SUMMARY_URL = "https://storage.hoodini.bio/assembly_summary.parquet"
+
+# NCBI fields are typed by name, never by their position or first few values.
+# All other fields (including future additions) remain strings. In particular,
+# PubMed IDs may contain semicolon-separated lists and isolates can start with 0.
+NUMERIC_COLUMNS = dict.fromkeys(
+    (
+        "taxid",
+        "species_taxid",
+        "genome_size",
+        "genome_size_ungapped",
+        "replicon_count",
+        "scaffold_count",
+        "contig_count",
+        "total_gene_count",
+        "protein_coding_gene_count",
+        "non_coding_gene_count",
+    ),
+    pl.Int64,
+)
+NUMERIC_COLUMNS["gc_percent"] = pl.Float64
 
 
 def generate_summary_urls(dbs: list[str], include_historical: bool = True) -> list[str]:
@@ -18,12 +45,79 @@ def generate_summary_urls(dbs: list[str], include_historical: bool = True) -> li
 
 
 def get_ncbi_header(file_path: Path) -> list[str]:
-    """Extract header from an NCBI assembly summary file (line starting with #assembly_accession)."""
-    with open(file_path, encoding="utf-8") as f:
+    """Find the named TSV header, accepting spacing and column-order changes."""
+    with open(file_path, encoding="utf-8-sig") as f:
         for line in f:
-            if line.startswith("#assembly_accession"):
-                return line.lstrip("#").strip().split("\t")
+            if not line.startswith("#"):
+                continue
+            header = [value.strip() for value in line[1:].rstrip("\r\n").split("\t")]
+            if "assembly_accession" in header:
+                if not all(header) or len(header) != len(set(header)):
+                    raise ValueError(f"Empty or duplicate header fields in {file_path}")
+                return header
     raise ValueError(f"No header found in {file_path}")
+
+
+def _validate_row_widths(file_path: Path, expected: int) -> None:
+    """Reject ragged TSV rows before the CSV reader can fill missing fields.
+
+    NCBI summary files use literal tabs without CSV quoting. This streaming pass
+    keeps memory bounded and gives physical line numbers for malformed rows.
+    """
+    rows = 0
+    with file_path.open("rb") as source:
+        for line_number, line in enumerate(source, start=1):
+            if line_number == 1:
+                line = line.removeprefix(b"\xef\xbb\xbf")
+            if line.startswith(b"#") or not line.strip():
+                continue
+            fields = line.count(b"\t") + 1
+            if fields != expected:
+                raise ValueError(
+                    f"{file_path}: line {line_number} has {fields} fields; "
+                    f"the header declares {expected}. Check for a truncated or shifted row."
+                )
+            rows += 1
+    if not rows:
+        raise ValueError(f"No assembly records found in {file_path}")
+
+
+def read_assembly_summary(
+    file_path: Path, columns_to_keep: list[str] | None = None
+) -> pl.DataFrame:
+    """Read a summary with an explicit schema and validate accession identities."""
+    header = get_ncbi_header(file_path)
+    _validate_row_widths(file_path, len(header))
+    schema = {name: NUMERIC_COLUMNS.get(name, pl.Utf8) for name in header}
+    try:
+        frame = pl.read_csv(
+            file_path,
+            separator="\t",
+            comment_prefix="#",
+            has_header=False,
+            schema=schema,
+            quote_char=None,
+            null_values="na",
+        )
+    except pl.exceptions.PolarsError as exc:
+        raise ValueError(f"Invalid assembly summary {file_path}: {exc}") from exc
+
+    valid_ids = pl.col("assembly_accession").str.contains(r"^GC[AF]_\d+\.\d+$").fill_null(False)
+    if frame.filter(~valid_ids).height:
+        raise ValueError(f"Invalid or missing assembly_accession in {file_path}")
+
+    if columns_to_keep:
+        frame = frame.select(
+            [
+                (
+                    pl.col(name)
+                    if name in frame.columns
+                    else pl.lit(None).cast(NUMERIC_COLUMNS.get(name, pl.Utf8)).alias(name)
+                )
+                for name in columns_to_keep
+            ]
+        )
+    return frame
 
 
 def download_assembly_db(
@@ -32,68 +126,105 @@ def download_assembly_db(
     columns_to_keep: list[str] | None = None,
     include_historical: bool = True,
 ) -> None:
-    """Download multiple assembly summary files using aria2c and save combined table."""
+    """Validate every requested source before atomically replacing the database.
+
+    Each attempt downloads into its own directory on the destination filesystem.
+    Failed downloads/inputs remain there for diagnosis, with the path logged.
+    """
     urls = generate_summary_urls(dbs, include_historical)
+    if not urls:
+        raise ValueError("At least one assembly summary database must be requested")
+    if columns_to_keep and "assembly_accession" not in columns_to_keep:
+        raise ValueError("columns_to_keep must include assembly_accession")
 
     out_names = [Path(url).name for url in urls]
     data_dir = output_path.parent
-    logger.info(f"Downloading {len(urls)} assembly summary files with aria2c...")
+    data_dir.mkdir(parents=True, exist_ok=True)
+    staging_dir = Path(mkdtemp(prefix="assembly-summary-update-", dir=data_dir))
+    try:
+        logger.info(f"Downloading {len(urls)} assembly summary files...")
+        result_files = download_urls(urls, staging_dir, show_progress=True, out_names=out_names)
+        downloaded = {Path(path).resolve() for path in result_files}
+        expected = [staging_dir / name for name in out_names]
+        missing = [
+            path.name for path in expected if path.resolve() not in downloaded or not path.is_file()
+        ]
+        if missing:
+            raise FileNotFoundError(f"Missing requested assembly summaries: {', '.join(missing)}")
 
-    result_files = download_with_aria2c(urls, data_dir, show_progress=True, out_names=out_names)
+        dfs = []
+        for file_path in expected:
+            logger.info(f"Parsing {file_path}")
+            dfs.append(read_assembly_summary(file_path, columns_to_keep))
 
-    dfs = []
-    for file_path in result_files:
-        logger.info(f"Parsing {file_path}")
-        try:
-            header = get_ncbi_header(file_path)
-            df = pl.read_csv(
-                file_path,
-                separator="\t",
-                comment_prefix="#",
-                has_header=False,
-                new_columns=header,
-                quote_char=None,
-                null_values="na",
-                infer_schema_length=1000,
-            )
-        except Exception as e:
-            logger.error(f"Failed to parse {file_path}: {e}")
-            with contextlib.suppress(Exception):
-                Path(file_path).unlink()
-            continue
+        combined = (
+            pl.concat(dfs, how="diagonal_relaxed")
+            .unique(subset=["assembly_accession"], keep="first", maintain_order=True)
+            .rechunk()
+        )
+        staged_output = staging_dir / output_path.name
+        combined.write_parquet(staged_output)
+        staged_output.replace(output_path)
+    except BaseException:
+        logger.error(
+            f"Assembly summary update failed; destination was not replaced. "
+            f"Downloaded files retained in {staging_dir}"
+        )
+        raise
 
-        if "assembly_accession" not in df.columns:
-            logger.error(f"No 'assembly_accession' in {file_path}!")
-            continue
-
-        if columns_to_keep:
-            keep = [c for c in columns_to_keep if c in df.columns]
-            df = df.select(keep)
-
-        dfs.append(df)
-        logger.info(f"Done {file_path}")
-        with contextlib.suppress(Exception):
-            Path(file_path).unlink()
-
-    if not dfs:
-        logger.warning("No dataframes were downloaded.")
-        return
-
-    combined = (
-        pl.concat(dfs, how="vertical_relaxed").unique(subset=["assembly_accession"]).rechunk()
-    )
-
-    combined.write_parquet(output_path)
+    try:
+        shutil.rmtree(staging_dir)
+    except OSError as exc:
+        logger.warning(f"Database updated, but could not remove {staging_dir}: {exc}")
     logger.info(f"Saved combined parquet to {output_path}")
 
 
 def download_assembly_summary_db(output_path: Path | None = None) -> Path:
-    """Convenience wrapper to download and merge RefSeq + GenBank assembly summaries."""
+    """Get RefSeq + GenBank assembly summaries, merged into a single parquet.
+
+    Tries the prebuilt copy on remote storage first (rebuilt daily, a single
+    ~100 MB download); falls back to downloading and merging the raw NCBI
+    files locally (~2 GB, much slower) if that is unavailable.
+    """
     from importlib.resources import files
 
     if output_path is None:
         output_path = files("hoodini").joinpath("data", "assembly_summary.parquet")
 
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if _download_prebuilt_assembly_summary(output_path):
+        return output_path
+
+    logger.info("Falling back to downloading and merging the raw NCBI assembly summary files...")
+    return _build_assembly_summary_from_ncbi(output_path)
+
+
+def _download_prebuilt_assembly_summary(output_path: Path) -> bool:
+    """Try to fetch the prebuilt merged parquet from remote storage. Returns success."""
+    from hoodini.download.databases import _download_url
+
+    logger.info(f"Downloading prebuilt assembly summary from {REMOTE_ASSEMBLY_SUMMARY_URL} ...")
+    staging_dir = Path(mkdtemp(prefix="assembly-summary-remote-", dir=output_path.parent))
+    try:
+        staged = staging_dir / output_path.name
+        if not _download_url(REMOTE_ASSEMBLY_SUMMARY_URL, staged, num_threads=4):
+            return False
+        if not staged.is_file() or staged.stat().st_size == 0:
+            return False
+        # Validate it's actually readable before replacing the destination.
+        pl.scan_parquet(staged).limit(1).collect()
+        staged.replace(output_path)
+        logger.info(f"Saved prebuilt assembly summary to {output_path}")
+        return True
+    except Exception as exc:
+        logger.warning(f"Could not use prebuilt assembly summary ({exc}); trying NCBI directly.")
+        return False
+    finally:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+
+
+def _build_assembly_summary_from_ncbi(output_path: Path) -> Path:
     columns = [
         "assembly_accession",
         "refseq_category",

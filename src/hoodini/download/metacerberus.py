@@ -8,7 +8,7 @@ from pathlib import Path
 import requests
 from rich.table import Table
 
-from hoodini.utils.downloader import download_with_aria2c
+from hoodini.utils.downloader import download_urls
 from hoodini.utils.logging_utils import console, info, logger, stage_header, warn
 
 PROJ = "3uz2j"
@@ -166,7 +166,7 @@ def download_pfam_direct(force=False):
         if force or not hmm_dest.exists():
             logger.info(f"Downloading Pfam HMM from {PFAM_HMM_URL}")
             try:
-                download_with_aria2c([PFAM_HMM_URL], tmpdir, show_progress=True)
+                download_urls([PFAM_HMM_URL], tmpdir, show_progress=True)
                 downloaded_hmm = tmpdir / "Pfam-A.hmm.gz"
                 if downloaded_hmm.exists():
                     shutil.move(str(downloaded_hmm), str(hmm_dest))
@@ -186,7 +186,7 @@ def download_pfam_direct(force=False):
         if force or not tsv_dest.exists():
             logger.info(f"Downloading Pfam dat from {PFAM_DAT_URL}")
             try:
-                download_with_aria2c([PFAM_DAT_URL], tmpdir, show_progress=True)
+                download_urls([PFAM_DAT_URL], tmpdir, show_progress=True)
                 downloaded_dat = tmpdir / "Pfam-A.hmm.dat.gz"
                 if downloaded_dat.exists():
                     parse_pfam_dat_to_tsv(downloaded_dat, tsv_dest)
@@ -214,9 +214,7 @@ def download_single_file(file_info):
     dest = DATA_DIR / out_name
 
     try:
-        result_files = download_with_aria2c(
-            [url], DATA_DIR, show_progress=True, out_names=[out_name]
-        )
+        result_files = download_urls([url], DATA_DIR, show_progress=True, out_names=[out_name])
         if not result_files:
             return (out_name, False, "No file returned from download")
 
