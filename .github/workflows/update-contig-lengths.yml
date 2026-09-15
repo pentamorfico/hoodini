@@ -1,0 +1,45 @@
+name: Update contig lengths (R2)
+
+on:
+  schedule:
+    # Daily at 04:00 UTC — downloads only assemblies missing locally and
+    # newer than the last R2 publish (see hoodini.download.contig_lengths),
+    # then merges that delta into the published parquet and republishes it.
+    - cron: '0 4 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  update-contig-lengths:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Install s5cmd
+        run: |
+          curl -sL https://github.com/peak/s5cmd/releases/download/v2.2.2/s5cmd_2.2.2_Linux-64bit.tar.gz \
+            | tar -xz -C /usr/local/bin s5cmd
+
+      - name: Download missing contig lengths from NCBI
+        env:
+          NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
+        run: hoodini download contig_lengths
+
+      - name: Merge delta into R2 and republish
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python scripts/update_contig_lengths_r2.py
