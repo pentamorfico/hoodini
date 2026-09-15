@@ -345,38 +345,75 @@ async def writer_consumer(queue, n_producers, writer):
 
 
 async def stream_and_write(
-    pairs, target_mb=30, batch_rows=5000, concurrency=10, retries=3, timeout=60
+    pairs,
+    target_mb=30,
+    batch_rows=5000,
+    concurrency=10,
+    retries=3,
+    timeout=60,
+    api_keys: list[str] | None = None,
+    per_key_concurrency: int = 3,
 ):
+    """Download sequence_report links and write contig lengths.
+
+    If ``api_keys`` is given, pairs are round-robined across one aiohttp
+    session per key (each sending an ``api-key`` header and capped at
+    ``per_key_concurrency`` concurrent requests), so each key gets its own
+    NCBI rate-limit bucket instead of sharing a single one. With no keys,
+    behaves exactly as before: a single anonymous session capped at
+    ``concurrency``.
+    """
     target_bytes = target_mb * 1024 * 1024
     writer = PartRotatingWriter(dataset_dir=CONTIG_LENGTHS_DIR, target_bytes=target_bytes)
     queue = asyncio.Queue(maxsize=20)
-    sem = asyncio.Semaphore(concurrency)
     consumer_task = asyncio.create_task(
         writer_consumer(queue, n_producers=len(pairs), writer=writer)
     )
 
     timeout_cfg = aiohttp.ClientTimeout(total=None, connect=30, sock_read=600)
-    headers = {"Accept-Encoding": "gzip, deflate", "User-Agent": "seqrep-dl/hoodini"}
-    connector = aiohttp.TCPConnector(limit_per_host=64, ttl_dns_cache=300)
+    keys: list[str | None] = list(api_keys) if api_keys else [None]
 
-    async with aiohttp.ClientSession(
-        timeout=timeout_cfg, connector=connector, headers=headers
-    ) as session:
+    async with contextlib.AsyncExitStack() as stack:
+        sessions = []
+        sems = []
+        for key in keys:
+            headers = {"Accept-Encoding": "gzip, deflate", "User-Agent": "seqrep-dl/hoodini"}
+            if key:
+                headers["api-key"] = key
+            connector = aiohttp.TCPConnector(limit_per_host=64, ttl_dns_cache=300)
+            session = await stack.enter_async_context(
+                aiohttp.ClientSession(timeout=timeout_cfg, connector=connector, headers=headers)
+            )
+            sessions.append(session)
+            sems.append(asyncio.Semaphore(per_key_concurrency if key else concurrency))
+
+        desc = (
+            f"conc={concurrency}" if keys == [None] else f"{len(keys)} keys x{per_key_concurrency}"
+        )
         progress = Progress(
             SpinnerColumn(),
             BarColumn(),
             TextColumn("{task.completed}/{task.total} {task.description}"),
             TimeElapsedColumn(),
         )
-        task_id = progress.add_task(f"Downloading (conc={concurrency})", total=len(pairs))
+        task_id = progress.add_task(f"Downloading ({desc})", total=len(pairs))
         ok = 0
         total_rows = 0
         with progress:
             tasks = [
                 asyncio.create_task(
-                    fetch_to_queue(session, asm, url, queue, batch_rows, retries, timeout, sem)
+                    fetch_to_queue(
+                        sessions[i % len(sessions)],
+                        asm,
+                        url,
+                        queue,
+                        batch_rows,
+                        retries,
+                        timeout,
+                        sems[i % len(sems)],
+                    )
                 )
-                for asm, url in pairs
+                for i, (asm, url) in enumerate(pairs)
             ]
             for fut in asyncio.as_completed(tasks):
                 ok1, info, sent = await fut
@@ -388,11 +425,56 @@ async def stream_and_write(
     return ok, total_rows, total_rows_written, files_written
 
 
+def _validate_api_keys(keys: list[str]) -> list[str]:
+    """Probe each NCBI API key with a cheap request and drop any that fail.
+
+    Prevents malformed/typo'd/revoked keys (which fail every request) from
+    silently eating retries and reducing effective throughput once assigned
+    to a rotation slot.
+    """
+    from hoodini.pipeline.helpers.prefetch_links import make_seqrep_url
+
+    probe_url = make_seqrep_url("GCF_000005845.2")  # small, always-available assembly
+    valid = []
+    for key in keys:
+        suffix = key[-4:] if len(key) >= 4 else key
+        try:
+            resp = requests.get(
+                probe_url, headers={"api-key": key}, timeout=15, allow_redirects=True
+            )
+            if resp.status_code == 200:
+                valid.append(key)
+            else:
+                console.log(
+                    f"⚠️  Dropping invalid NCBI API key (...{suffix}): HTTP {resp.status_code}"
+                )
+        except Exception as e:
+            console.log(f"⚠️  Dropping NCBI API key (...{suffix}): {e}")
+    return valid
+
+
 def download_contig_lengths(
-    api_key: str | None = None, workers: int = 10, skip_assembly_summary: bool = False
+    api_key: str | None = None,
+    workers: int = 10,
+    skip_assembly_summary: bool = False,
+    api_keys: list[str] | None = None,
+    per_key_concurrency: int = 3,
 ):
     global NCBI_API_KEY
     NCBI_API_KEY = api_key
+    if api_keys:
+        api_keys = _validate_api_keys(api_keys)
+        if not api_keys:
+            console.log(
+                "⚠️  No valid NCBI API keys remained after validation; "
+                "falling back to single-session mode."
+            )
+        else:
+            console.log(
+                f"🔑 Using {len(api_keys)} valid NCBI API key(s), "
+                f"{per_key_concurrency} connections each "
+                f"(~{len(api_keys) * per_key_concurrency} concurrent requests)."
+            )
     if not skip_assembly_summary:
         console.log("🔄 Updating local assembly_summary.parquet...")
         download_assembly_summary_db()
@@ -513,6 +595,8 @@ def download_contig_lengths(
             concurrency=workers,
             retries=MAX_RETRIES,
             timeout=60,
+            api_keys=api_keys,
+            per_key_concurrency=per_key_concurrency,
         )
     )
 

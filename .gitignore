@@ -30,3 +30,6 @@ run.log
 !.pixi/config.toml
 tests/feature_coverage/outputs/
 src/hoodini/data/idmapping_selected.parquet
+# NCBI API keys for parallel contig_lengths downloads (never commit secrets)
+ncbi_api_keys*
+*.ncbi-keys
