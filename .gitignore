@@ -14,6 +14,7 @@ src/hoodini/data/genomad_db/**
 **/__pycache__/
 src/hoodini/data/contig_lengths/**
 src/hoodini/data/contig_lengths/
+src/hoodini/data/contig_lengths_checkpoint.sqlite*
 .pytest_cache/
 **/*.pyc
 .ruff_cache/

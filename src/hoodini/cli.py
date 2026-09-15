@@ -405,7 +405,39 @@ def download_type_dive():
     default=False,
     help="Skip refreshing local assembly_summary.parquet (use existing local copy).",
 )
-def download_contig_lengths(api_key, api_keys_file, connections_per_key, skip_assembly_summary):
+@click.option(
+    "--requests-per-second",
+    "requests_per_second",
+    type=float,
+    default=None,
+    help=(
+        "Max requests/second per session (i.e. per API key, or the single "
+        "anonymous session). Defaults to 8/s with a key, 4/s without one."
+    ),
+)
+@click.option(
+    "--page-size",
+    "page_size",
+    type=int,
+    default=100,
+    help="sequence_reports page size per request (default: 100).",
+)
+@click.option(
+    "--no-resume",
+    "no_resume",
+    is_flag=True,
+    default=False,
+    help="Ignore the completed-assemblies checkpoint and refetch everything.",
+)
+def download_contig_lengths(
+    api_key,
+    api_keys_file,
+    connections_per_key,
+    skip_assembly_summary,
+    requests_per_second,
+    page_size,
+    no_resume,
+):
     """Download missing NCBI contig length records and update precomputed list."""
     stage_header("Downloading NCBI contig lengths", "📥")
     from hoodini.download.contig_lengths import download_contig_lengths as impl
@@ -424,6 +456,9 @@ def download_contig_lengths(api_key, api_keys_file, connections_per_key, skip_as
         skip_assembly_summary=skip_assembly_summary,
         api_keys=api_keys,
         per_key_concurrency=connections_per_key,
+        requests_per_second=requests_per_second,
+        page_size=page_size,
+        resume=not no_resume,
     )
     stage_done("NCBI contig length download complete")
 
