@@ -1,57 +1,46 @@
+"""Browser setup utilities for ensuring lightpanda is available.
+
+This module ensures the ``lightpanda`` headless browser binary is installed
+and its CDP server is running before use. Unlike Playwright/Firefox, lightpanda
+is a single static binary (from bioconda) with no GTK/X11 dependencies, so
+"ensuring" it is available just means checking the binary exists and starting
+its ``serve`` process if needed.
 """
-Browser setup utilities for installing and verifying Playwright dependencies.
 
-This module ensures Playwright Firefox is available before use.
-"""
+from hoodini.utils.cdp_browser import (
+    find_lightpanda_binary,
+    lightpanda_server_alive,
+    start_lightpanda_server,
+)
+from hoodini.utils.logging_utils import error, info
 
-import asyncio
-import subprocess
-import sys
 
-
-def ensure_playwright_firefox() -> bool:
+def ensure_lightpanda() -> bool:
     """
-    Ensure Playwright Firefox is installed.
-
-    Automatically installs Firefox if not already present.
-    This should be called once per environment during initial setup.
+    Ensure the lightpanda CDP server is available, starting it if needed.
 
     Returns:
-        True if Firefox is available or was successfully installed, False otherwise.
+        True if the lightpanda server is running (or was successfully
+        started), False otherwise.
     """
-    try:
-        # Try to import playwright first
-        from playwright.async_api import async_playwright
-
-        # Check if Firefox binary exists by attempting to launch it
-        async def check_firefox():
-            try:
-                async with async_playwright() as p:
-                    browser = await p.firefox.launch(headless=True)
-                    await browser.close()
-                    return True
-            except Exception:
-                return False
-
-        if asyncio.run(check_firefox()):
-            return True
-    except Exception:
-        pass
-
-    # Firefox not available, attempt to install
-    print("Installing Playwright Firefox browser...")
-    try:
-        subprocess.run(
-            [sys.executable, "-m", "playwright", "install", "firefox"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        print("✓ Playwright Firefox installed successfully")
+    if lightpanda_server_alive():
         return True
-    except subprocess.CalledProcessError as e:
-        print(f"✗ Failed to install Playwright Firefox:\n{e.stderr}")
+
+    lp_bin = find_lightpanda_binary()
+    if not lp_bin:
+        error(
+            "✗ lightpanda binary not found. Install it via: " "mamba install -c bioconda lightpanda"
+        )
+        return False
+
+    try:
+        info("Starting lightpanda CDP server...")
+        start_lightpanda_server(lp_bin)
+        info("✓ lightpanda server is running")
+        return True
+    except Exception as e:
+        error(f"✗ Failed to start lightpanda server: {e}")
         return False
 
 
-__all__ = ["ensure_playwright_firefox"]
+__all__ = ["ensure_lightpanda"]

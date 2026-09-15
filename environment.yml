@@ -21,20 +21,7 @@ dependencies:
   - foldseek
   - famsa
   - veryfasttree
-  - firefox
+  - lightpanda
   - foldmason
-  - gtk3
-  - atk
-  - xorg-libxcomposite
-  - xorg-libxdamage
-  - xorg-libxfixes
-  - xorg-libxrandr
-  - xorg-libxrender
-  - xorg-libxext
-  - cairo
-  - pango
-  - gdk-pixbuf
-  - fontconfig
-  - alsa-lib
   - defense-finder>=2.0.0
 
