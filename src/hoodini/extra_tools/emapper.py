@@ -131,8 +131,7 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
         con.execute('SET memory_limit = "4GB"')
 
         # Create temp table for lookup IDs
-        con.execute("CREATE TEMP TABLE lookup (id BIGINT)")
-        con.executemany("INSERT INTO lookup VALUES (?)", [(pid,) for pid in prot_ids])
+        con.register("lookup", pl.DataFrame({"id": prot_ids}, schema={"id": pl.Int64}))
 
         prot_cols_sql = ", ".join(f'"{c}"' for c in prot_cols)
         annotated = con.execute(
