@@ -4,8 +4,8 @@ from importlib.resources import files
 from pathlib import Path
 from shutil import copyfile
 
-import pyarrow.parquet as pq
 import polars as pl
+import pyarrow.parquet as pq
 
 from hoodini.utils.logging_utils import info, success, warn
 
@@ -13,27 +13,7 @@ from hoodini.utils.logging_utils import info, success, warn
 def _stream_filter_parquet_by_id(
     path: str, ids: set[int], columns: list[str], id_col: str = "id"
 ) -> pl.DataFrame:
-    """
-    Filter a large parquet file by a set of ids while keeping peak memory
-    bounded to roughly one row-group's decoded size, instead of DuckDB's
-    approach of decoding the whole (or nearly the whole) column set at once.
-
-    Real DIAMOND/eggNOG hit ids are scattered essentially uniformly across
-    the ~57M-row eggnog_prots table, so row-group pruning by id range never
-    helps: virtually every row group contains at least one match. The actual
-    memory hog is the wide `ogs` column (~2.7GB uncompressed, PLAIN-encoded),
-    which DuckDB must decode almost entirely to answer such a query, needing
-    8GB+ just for that lookup.
-
-    Reading and filtering one row group at a time keeps peak memory to the
-    size of a single decoded row group (tens of MB here) instead. The key
-    subtlety: naively appending `df.filter(...)` results still pins the
-    *entire* source row-group buffer in memory (Polars/Arrow keep a
-    zero-copy reference to the parent buffer even for a handful of matched
-    rows), so each kept chunk is forced through an Arrow `combine_chunks()`
-    round-trip to make a genuine compact copy before the row-group buffer is
-    released.
-    """
+    """Filter a large parquet file by id, one row group at a time to bound peak memory."""
     pf = pq.ParquetFile(path)
     chunks: list[pl.DataFrame] = []
     for rg_idx in range(pf.num_row_groups):
@@ -43,14 +23,13 @@ def _stream_filter_parquet_by_id(
         filtered = df.filter(pl.col(id_col).is_in(ids))
         del df
         if filtered.height:
-            # Force a compact copy so the small result doesn't keep the
-            # whole (much larger) row-group buffer alive.
+            # compact copy; matched rows must not pin the parent row-group buffer
             chunks.append(pl.from_arrow(filtered.to_arrow().combine_chunks()))
         del filtered
         gc.collect()
 
     if not chunks:
-        return pl.DataFrame(schema={c: pl.Null for c in columns})
+        return pl.DataFrame(schema=dict.fromkeys(columns, pl.Null))
     return pl.concat(chunks)
 
 
@@ -60,9 +39,7 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
     join to eggNOG metadata, pick the deepest OG per query,
     and return one row per input protein as a Polars DataFrame.
 
-    Streams the large eggnog_prots.parquet lookup row-group by row-group to
-    keep memory usage bounded regardless of hit count (see
-    `_stream_filter_parquet_by_id`).
+    Streams the eggnog_prots.parquet lookup via `_stream_filter_parquet_by_id`.
     """
 
     info("🧾\tRunning eggNOG-mapper (DIAMOND + eggNOG, best+deepest OG) ...")
@@ -172,12 +149,7 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
         "bigg_reaction",
     ]
 
-    # Stream eggnog_prots.parquet row-group by row-group instead of loading it
-    # wholesale (via DuckDB or a single Polars filter): real DIAMOND hit ids
-    # are scattered across the whole ~57M-row table, so no amount of sorting
-    # or row-group pruning helps, and the wide `ogs` column alone needs 8GB+
-    # to decode in one shot. Streaming bounds peak memory to roughly one
-    # row-group's size (tens of MB) regardless of how many hits there are.
+    # Streaming lookup; see _stream_filter_parquet_by_id for why not DuckDB.
     prot_id_set = set(prot_ids)
     prots = _stream_filter_parquet_by_id(
         eggnog_prots_path,

@@ -81,12 +81,9 @@ def initialize_inputs(
 
         literal = str(input_path).strip()
         if categorize_id(literal)["type"] == "nucleotide":
-            # Nucleotide IDs (optionally in NucID:start-end region form) are resolved
-            # through the regular input-list flow; the single-query path is a
-            # protein-only remote-BLAST seed and cannot efetch genomic regions.
             temp_input = output_folder / "input_from_nucleotide_id.txt"
             temp_input.write_text(literal + "\n", encoding="utf-8")
-            info(f"Using nucleotide literal as input list: {literal}")
+            info(f"✔️  Using nucleotide literal as input list: {literal}")
         else:
             temp_input = prepare_single_query_input(
                 literal,
