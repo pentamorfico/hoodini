@@ -77,16 +77,26 @@ def initialize_inputs(
     # If input_path is a literal (not a file), build a temp list inside the output folder.
     if input_path and not Path(input_path).exists():
         from hoodini.pipeline.helpers.single_query import prepare_single_query_input
+        from hoodini.utils.id_parsing import categorize_id
 
-        temp_input = prepare_single_query_input(
-            str(input_path),
-            output_folder,
-            evalue=remote_evalue,
-            max_targets=remote_max_targets,
-        )
-        if not temp_input:
-            error("Failed to prepare input from single query; aborting.")
-            sys.exit(1)
+        literal = str(input_path).strip()
+        if categorize_id(literal)["type"] == "nucleotide":
+            # Nucleotide IDs (optionally in NucID:start-end region form) are resolved
+            # through the regular input-list flow; the single-query path is a
+            # protein-only remote-BLAST seed and cannot efetch genomic regions.
+            temp_input = output_folder / "input_from_nucleotide_id.txt"
+            temp_input.write_text(literal + "\n", encoding="utf-8")
+            info(f"Using nucleotide literal as input list: {literal}")
+        else:
+            temp_input = prepare_single_query_input(
+                literal,
+                output_folder,
+                evalue=remote_evalue,
+                max_targets=remote_max_targets,
+            )
+            if not temp_input:
+                error("Failed to prepare input from single query; aborting.")
+                sys.exit(1)
         input_path = str(temp_input)
 
     if inputsheet:
