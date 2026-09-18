@@ -181,7 +181,9 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
     # Pick the deepest OG (highest `depth`) per query protein.
     # `og` breaks depth ties deterministically regardless of join output order.
     deepest = (
-        hits_annotated.sort(["qseqid", "depth", "og"], descending=[False, True, False], nulls_last=True)
+        hits_annotated.sort(
+            ["qseqid", "depth", "og"], descending=[False, True, False], nulls_last=True
+        )
         .group_by("qseqid")
         .head(1)
     )
