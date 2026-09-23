@@ -69,6 +69,35 @@ def _s5cmd_env() -> dict:
     return env
 
 
+def _tolerant_select_sql(
+    con: duckdb.DuckDBPyConnection,
+    source: str,
+    columns: list[str],
+    expected_types: dict[str, str] | None = None,
+) -> tuple[str, list[str]]:
+    """Build a SELECT list over `source` that tolerates schema drift.
+
+    The published schema (REMOTE_COLUMNS) is the contract: columns present in
+    the source pass through, columns absent are filled with a typed NULL, and
+    any extra source columns are dropped. This matters because union_by_name
+    only back-fills a column with NULL when at least one part has it — when NO
+    part has it, the unified schema lacks the column entirely and a bare SELECT
+    fails with a BinderException (NCBI's sequence_report format is actively
+    migrating; gcCount vanished from the 2026-09 delta).
+    """
+    present = {
+        row[0]: row[1]
+        for row in con.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()
+    }
+    missing = [c for c in columns if c not in present]
+    kinds = expected_types or {}
+    select_parts = [
+        c if c in present else f"CAST(NULL AS {kinds.get(c, 'VARCHAR')}) AS {c}"
+        for c in columns
+    ]
+    return ", ".join(select_parts), missing
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -103,7 +132,25 @@ def main() -> int:
     print(f"Local delta assemblies: {local_count:,}")
     print(f"Remote published assemblies: {remote_count:,}")
 
-    cols_sql = ", ".join(REMOTE_COLUMNS)
+    remote_source = f"read_parquet('{REMOTE_URL}')"
+    local_source = f"read_parquet('{LOCAL_PARTS_GLOB}', union_by_name=True)"
+
+    # Types come from the currently published parquet: it is the schema
+    # contract, so NULLs injected on either side match its column types.
+    remote_types = {
+        row[0]: row[1]
+        for row in con.execute(f"DESCRIBE SELECT * FROM {remote_source}").fetchall()
+    }
+
+    remote_sql, remote_missing = _tolerant_select_sql(con, remote_source, REMOTE_COLUMNS, remote_types)
+    if remote_missing:
+        print(f"⚠️  Parquet publicado sin columnas {remote_missing}; rellenando con NULL.")
+    local_sql, local_missing = _tolerant_select_sql(con, local_source, REMOTE_COLUMNS, remote_types)
+    if local_missing:
+        print(
+            f"⚠️  Delta local sin columnas {local_missing} — ¿formato sequence_report de "
+            f"NCBI cambiado? Rellenando con NULL (sin dato para esos assemblies)."
+        )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = Path(tmpdir) / "contig_lengths.parquet"
@@ -111,19 +158,20 @@ def main() -> int:
         # Local rows win when an assemblyAccession exists in both (shouldn't
         # normally happen given the fetcher's own missing/date filtering, but
         # be defensive): drop the remote rows for any accession also present
-        # locally, then union with the (column-trimmed) local delta.
+        # locally, then union with the (column-trimmed) local delta. Both
+        # selects tolerate missing columns on either side.
         con.execute(
             f"""
             COPY (
-                SELECT {cols_sql}
-                FROM read_parquet('{REMOTE_URL}')
+                SELECT {remote_sql}
+                FROM {remote_source}
                 WHERE assemblyAccession NOT IN (
                     SELECT DISTINCT assemblyAccession
-                    FROM read_parquet('{LOCAL_PARTS_GLOB}', union_by_name=True)
+                    FROM {local_source}
                 )
                 UNION ALL
-                SELECT {cols_sql}
-                FROM read_parquet('{LOCAL_PARTS_GLOB}', union_by_name=True)
+                SELECT {local_sql}
+                FROM {local_source}
             ) TO '{output_path}' (FORMAT PARQUET, COMPRESSION ZSTD)
             """
         )
