@@ -19,7 +19,7 @@ from rich.progress import (
 def process_sequence(seq, sequences, max_iterations=3):
     alphabet = pyhmmer.easel.Alphabet.amino()
     pli = pyhmmer.plan7.Pipeline(alphabet)
-    name = seq.name.decode("utf-8")
+    name = seq.name
     iterator = pli.iterate_seq(seq, sequences)
     for iteration in range(max_iterations):
         iteration = next(iterator)
@@ -61,7 +61,7 @@ def run_jackhmmer(faa, cpus=multiprocessing.cpu_count(), max_iterations=3):
 def cluster_jackhmmer_results(dicc_hits, min_evalue=1e-10):
     ds = UnionFind()
     for _, hits in dicc_hits.items():
-        ds.union(*[hit.name.decode() for hit in hits if hit.evalue <= min_evalue])
+        ds.union(*[hit.name for hit in hits if hit.evalue <= min_evalue])
     data = []
     for group in ds.to_sets():
         representative = next(iter(group))

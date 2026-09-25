@@ -18,6 +18,7 @@ from rich.progress import (
 )
 
 from hoodini.utils.logging_utils import info, warn
+from hoodini.utils.seq_io import to_fasta
 
 
 def deduplicate_domains(
@@ -178,12 +179,38 @@ def run_domain(
         return domains_data
 
     fasta_path = output / "results.fasta"
-    if not fasta_path.exists() or fasta_path.stat().st_size == 0:
+
+    def _fasta_ids(path: Path) -> set:
+        ids = set()
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                if line.startswith(">"):
+                    ids.add(line[1:].split()[0])
+        return ids
+
+    needs_fasta = True
+    if fasta_path.exists() and fasta_path.stat().st_size > 0:
+        # A stale FASTA from a previous run would silently annotate the wrong
+        # sequences; only reuse it when it contains every requested protein.
+        try:
+            requested_ids = set(all_prots["protein_id"].drop_nulls().to_list())
+            missing_ids = requested_ids - _fasta_ids(fasta_path)
+            needs_fasta = bool(missing_ids)
+            if needs_fasta:
+                warn(f"{fasta_path} is missing {len(missing_ids)} proteins; regenerating it.")
+        except Exception as e:
+            warn(f"Could not validate {fasta_path}: {e}. Regenerating it.")
+            needs_fasta = True
+
+    if needs_fasta:
         info(f"Generating protein sequences file at {fasta_path}...")
         try:
-            all_prots[["protein_id", "sequence"]].drop_nulls().drop_duplicates(
-                "protein_id"
-            ).to_fasta("protein_id", "sequence", fasta_path)
+            to_fasta(
+                all_prots[["protein_id", "sequence"]].drop_nulls().unique(subset=["protein_id"]),
+                "protein_id",
+                "sequence",
+                fasta_path,
+            )
             info(f"✔ Generated {fasta_path}")
         except Exception as e:
             warn(f"Could not generate FASTA file: {e}")
@@ -246,9 +273,9 @@ def run_domain(
                 ) as progress:
                     task = progress.add_task(db, total=total)
                     for hits in pyhmmer.hmmsearch(hmms, sequences, cpus=num_threads, E=1e-5):
-                        hmm_id = hits.query.name.decode()
+                        hmm_id = hits.query.name
                         for hit in hits.included:
-                            protein_id = hit.name.decode()
+                            protein_id = hit.name
                             for domain in hit.domains.included:
                                 start = int(domain.env_from)
                                 end = int(domain.env_to)
@@ -287,7 +314,9 @@ def run_domain(
         if db_domains.height == 0:
             continue
         try:
-            domain_metadata = pl.read_csv(str(tsv_path), separator="\t")
+            # quote_char=None: some metadata TSVs (e.g. KEGG) contain stray
+            # unbalanced quotes that break the default polars CSV parser.
+            domain_metadata = pl.read_csv(str(tsv_path), separator="\t", quote_char=None)
             db_domains = db_domains.with_columns(
                 pl.col("domain_id")
                 .map_elements(
@@ -308,12 +337,29 @@ def run_domain(
                     id_column = col
                     break
             if id_column:
+                # Some metadata TSVs include version suffixes (e.g. NF000531.2),
+                # while domain_id_clean is version-stripped; normalize both sides.
+                domain_metadata = domain_metadata.with_columns(
+                    pl.col(id_column).cast(pl.Utf8).str.split(".").list.first().alias(id_column)
+                )
+                if db == "cazy":
+                    # CAZy HMMs include subfamilies (e.g. AA1_1) whose TSV
+                    # metadata is family-level (AA1); join on the family prefix.
+                    db_domains = db_domains.with_columns(
+                        pl.col("domain_id_clean")
+                        .str.split("_")
+                        .list.first()
+                        .alias("domain_id_family")
+                    )
+                    join_key = "domain_id_family"
+                else:
+                    join_key = "domain_id_clean"
                 metadata_columns = {
                     col: f"{col}_{db}" for col in domain_metadata.columns if col != id_column
                 }
                 domain_metadata = domain_metadata.rename(metadata_columns)
                 merged = db_domains.join(
-                    domain_metadata, left_on="domain_id_clean", right_on=id_column, how="left"
+                    domain_metadata, left_on=join_key, right_on=id_column, how="left"
                 )
                 all_domains_with_metadata.append(merged)
             else:
