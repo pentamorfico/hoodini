@@ -63,6 +63,11 @@ def get_db_groups(files):
         name = f["name"]
         if name.endswith(".hmm.gz") or name.endswith(".tsv"):
             group = name.split(".")[0].split("_")[0].lower()
+            # KEGG.tsv holds the metadata for the KOFam HMM profiles, but the
+            # OSF storage groups it as "kegg", which would leave KOFam without
+            # a TSV (and therefore unusable by run_domain). Re-group it here.
+            if name == "KEGG.tsv":
+                group = "kofam"
             groups.setdefault(group, []).append(f)
     return groups
 
