@@ -10,8 +10,8 @@ from pathlib import Path
 import requests
 
 from hoodini.utils.browser_setup import ensure_lightpanda
-from hoodini.utils.cdp_browser import LIGHTPANDA_WS_URL, CDPSession
 from hoodini.utils.logging_utils import error, info, warn
+from hoodini.utils.mcp_browser import MCPBrowserError, MCPBrowserSession
 from hoodini.utils.ncbi_eutils import efetch
 
 UNIPROT_RE = re.compile(r"^[A-NR-Z][0-9][A-Z0-9]{3}[0-9](?:-[0-9]+)?$")
@@ -63,7 +63,7 @@ def _run_remote_blast(
     max_targets: int,
     db: str = "nr_cluster_seq",
 ) -> list[str]:
-    """Run remote BLAST via NCBI using lightpanda (headless browser over CDP).
+    """Run remote BLAST via NCBI using lightpanda (headless browser over MCP stdio, no port).
 
     Automatically switches to PSI-BLAST when ``max_targets`` exceeds 5000,
     since NCBI blastp caps at 5000 while PSI-BLAST supports up to 20000.
@@ -98,8 +98,9 @@ def _build_blast_submit_js(
     EXPECT and, when needed, the PSI-BLAST radio); everything else keeps the
     page's own defaults. Submission uses ``form.submit()`` directly rather
     than clicking the BLAST button, since that button has ``type="button"``
-    and is wired up via jQuery delegate handlers that lightpanda's synthetic
-    click events don't reliably trigger.
+    and is wired up via jQuery delegate handlers that don't reliably trigger
+    from synthetic events. The result is JSON-stringified so it survives the
+    round-trip through the browser tool as text.
     """
     seq = re.sub(r"^>.*\n?", "", fasta_text).replace("\n", "").strip()
     psi_js = (
@@ -116,7 +117,7 @@ def _build_blast_submit_js(
     return f"""
     (() => {{
       var q = document.querySelector('textarea[name="QUERY"]') || document.querySelector('textarea');
-      if (!q) return {{ok: false, reason: 'query textarea not found'}};
+      if (!q) return JSON.stringify({{ok: false, reason: 'query textarea not found'}});
       q.focus();
       q.value = {json.dumps(seq)};
       q.dispatchEvent(new Event('input', {{bubbles: true}}));
@@ -141,9 +142,9 @@ def _build_blast_submit_js(
         expect.dispatchEvent(new Event('change', {{bubbles: true}}));
       }}
       var form = q.form;
-      if (!form) return {{ok: false, reason: 'form not found'}};
+      if (!form) return JSON.stringify({{ok: false, reason: 'form not found'}});
       form.submit();
-      return {{ok: true}};
+      return JSON.stringify({{ok: true}});
     }})()
     """
 
@@ -155,41 +156,57 @@ def _lightpanda_blast(
     dropdown_value: int,
     use_psiblast: bool,
 ) -> list[str]:
-    """Run the actual lightpanda (CDP) browser session for BLAST."""
-    cdp = CDPSession(LIGHTPANDA_WS_URL)
+    """Run the browser session for BLAST (lightpanda over MCP stdio, no port)."""
+    mcp = MCPBrowserSession()
     try:
-        session_id = cdp.open_page()
-        cdp.navigate(session_id, "https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE=Proteins")
+        # Navigate via JS instead of the goto tool: NCBI's page pulls slow
+        # third-party resources that can exceed lightpanda's navigation
+        # timeout, but the form is usable long before the page fully settles.
+        mcp.goto("about:blank")
+        mcp.evaluate("location.href = 'https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE=Proteins'")
+        if not mcp.wait_for_script(
+            "document.querySelector('textarea[name=\"QUERY\"]') !== null",
+            timeout=120,
+        ):
+            error("❌ BLAST form did not load")
+            return []
 
         submit_js = _build_blast_submit_js(fasta_text, evalue, dropdown_value, use_psiblast)
         submitted = None
         for _attempt in range(5):
-            submitted = cdp.evaluate(session_id, submit_js)
-            if submitted and submitted.get("ok"):
+            try:
+                submitted = mcp.evaluate(submit_js)
+            except MCPBrowserError:
+                submitted = None
+                time.sleep(1.5)
+                continue
+            if isinstance(submitted, dict) and submitted.get("ok"):
                 break
             time.sleep(1.5)
-        if not submitted or not submitted.get("ok"):
+        if not (isinstance(submitted, dict) and submitted.get("ok")):
             error(f"❌ Could not submit BLAST form: {submitted}")
             return []
 
         rid = None
         for _attempt in range(10):
             time.sleep(2)
-            rid = cdp.evaluate(
-                session_id,
-                "document.querySelector('input[name=\"RID\"]')"
-                " ? document.querySelector('input[name=\"RID\"]').value : null",
-            )
+            try:
+                rid = mcp.evaluate(
+                    "document.querySelector('input[name=\"RID\"]')"
+                    " ? document.querySelector('input[name=\"RID\"]').value : null"
+                )
+            except MCPBrowserError:
+                continue  # evaluate during navigation can fail transiently
             if rid:
                 break
 
         if not rid:
             error("❌ Could not find RID")
-            href = cdp.evaluate(session_id, "String(location.href)")
+            href = mcp.evaluate("String(location.href)")
             info(f"debug: Current URL: {href}")
             return []
     finally:
-        cdp.close()
+        mcp.close()
 
     status_url = (
         f"https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Get&RID={rid}&FORMAT_OBJECT=SearchInfo"

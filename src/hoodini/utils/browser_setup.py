@@ -1,46 +1,22 @@
 """Browser setup utilities for ensuring lightpanda is available.
 
-This module ensures the ``lightpanda`` headless browser binary is installed
-and its CDP server is running before use. Unlike Playwright/Firefox, lightpanda
-is a single static binary (from bioconda) with no GTK/X11 dependencies, so
-"ensuring" it is available just means checking the binary exists and starting
-its ``serve`` process if needed.
+This module only checks that the ``lightpanda`` headless browser binary is
+installed. Browser sessions run over MCP stdio (see ``mcp_browser``), so no
+CDP server and no network port are involved.
 """
 
-from hoodini.utils.cdp_browser import (
-    find_lightpanda_binary,
-    lightpanda_server_alive,
-    start_lightpanda_server,
-)
-from hoodini.utils.logging_utils import error, info
+from __future__ import annotations
+
+from hoodini.utils.logging_utils import error
+from hoodini.utils.mcp_browser import find_lightpanda_binary
 
 
 def ensure_lightpanda() -> bool:
-    """
-    Ensure the lightpanda CDP server is available, starting it if needed.
-
-    Returns:
-        True if the lightpanda server is running (or was successfully
-        started), False otherwise.
-    """
-    if lightpanda_server_alive():
+    """Ensure the lightpanda binary is available (MCP stdio mode needs no server)."""
+    if find_lightpanda_binary():
         return True
-
-    lp_bin = find_lightpanda_binary()
-    if not lp_bin:
-        error(
-            "✗ lightpanda binary not found. Install it via: " "mamba install -c bioconda lightpanda"
-        )
-        return False
-
-    try:
-        info("Starting lightpanda CDP server...")
-        start_lightpanda_server(lp_bin)
-        info("✓ lightpanda server is running")
-        return True
-    except Exception as e:
-        error(f"✗ Failed to start lightpanda server: {e}")
-        return False
+    error("✗ lightpanda binary not found. Install it via: " "mamba install -c bioconda lightpanda")
+    return False
 
 
 __all__ = ["ensure_lightpanda"]
