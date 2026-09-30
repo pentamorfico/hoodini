@@ -33,7 +33,7 @@ FROM condaforge/mambaforge:latest
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
-# Install build essentials (Firefox from mamba brings GUI/X11 deps)
+# Install build essentials
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
@@ -57,8 +57,7 @@ COPY src/ ./src/
 # Install the package in the env (no need for conda init)
 RUN /bin/bash -lc "source /opt/conda/etc/profile.d/conda.sh && \
     conda activate hoodini && \
-    pip install --no-cache-dir -e . && \
-    playwright install firefox"
+    pip install --no-cache-dir -e ."
 
 # Set environment variables
 ENV PATH="/opt/conda/envs/hoodini/bin:${PATH}"
