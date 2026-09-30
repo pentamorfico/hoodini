@@ -1,6 +1,4 @@
-import os
 import subprocess
-import sys
 from ast import literal_eval
 from pathlib import Path
 
@@ -61,17 +59,8 @@ def run_cctyper(all_gff, all_prots, all_neigh, output, num_threads, valid_unique
         str(output / "cctyper"),
     ]
 
-    # cctyper's python steps (xgboost) resolve the system libstdc++ unless the
-    # conda env's lib dir comes first in LD_LIBRARY_PATH.
-    env = dict(os.environ)
-    conda_lib = Path(sys.executable).resolve().parent.parent / "lib"
-    if conda_lib.is_dir():
-        env["LD_LIBRARY_PATH"] = str(conda_lib) + (
-            os.pathsep + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else ""
-        )
-
     try:
-        subprocess.run(command, check=True, capture_output=True, text=True, env=env)
+        subprocess.run(command, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as e:
         stderr = (e.stderr or "")[-2000:]
         raise RuntimeError(f"cctyper failed (exit {e.returncode}): {stderr}") from e
