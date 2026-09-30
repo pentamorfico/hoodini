@@ -27,8 +27,21 @@ MCP_PROTOCOL_VERSION = "2024-11-05"
 
 
 def find_lightpanda_binary() -> str | None:
-    """Locate the ``lightpanda`` executable on PATH."""
-    return shutil.which("lightpanda")
+    """Locate a lightpanda binary.
+
+    Resolution order: PATH (conda/pixi/manual installs) first, then the
+    bundled binary of the official ``lightpanda`` pip package, which ships
+    the browser inside its wheels.
+    """
+    found = shutil.which("lightpanda")
+    if found:
+        return found
+    try:
+        from lightpanda.client import find_binary as pip_find_binary
+
+        return str(pip_find_binary())
+    except ImportError:
+        return None
 
 
 class MCPBrowserError(RuntimeError):

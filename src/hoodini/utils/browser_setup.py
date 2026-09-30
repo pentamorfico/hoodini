@@ -12,10 +12,13 @@ from hoodini.utils.mcp_browser import find_lightpanda_binary
 
 
 def ensure_lightpanda() -> bool:
-    """Ensure the lightpanda binary is available (MCP stdio mode needs no server)."""
+    """Ensure a lightpanda binary is available (MCP stdio mode needs no server)."""
     if find_lightpanda_binary():
         return True
-    error("✗ lightpanda binary not found. Install it via: " "mamba install -c bioconda lightpanda")
+    error(
+        "✗ lightpanda binary not found. Install it via: pip install lightpanda "
+        "(bundles the browser) or: mamba install -c bioconda lightpanda"
+    )
     return False
 
 
