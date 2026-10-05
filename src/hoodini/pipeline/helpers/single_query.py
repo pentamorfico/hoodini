@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import time
@@ -11,11 +12,7 @@ import requests
 
 from hoodini.utils.browser_setup import ensure_lightpanda
 from hoodini.utils.logging_utils import error, info, warn
-from hoodini.utils.mcp_browser import (
-    MCPBrowserError,
-    MCPBrowserSession,
-    find_lightpanda_binary,
-)
+from hoodini.utils.mcp_browser import MCPBrowserError, MCPBrowserSession, find_lightpanda_binary
 from hoodini.utils.ncbi_eutils import efetch
 
 UNIPROT_RE = re.compile(r"^[A-NR-Z][0-9][A-Z0-9]{3}[0-9](?:-[0-9]+)?$")
@@ -183,76 +180,72 @@ def _browser_blast(
             return []
 
         submit_js = _build_blast_submit_js(fasta_text, evalue, dropdown_value, use_psiblast)
-        submitted = None
-        for _attempt in range(5):
-            try:
-                submitted = mcp.evaluate(submit_js)
-            except MCPBrowserError:
-                submitted = None
-                time.sleep(1.5)
-                continue
-            if isinstance(submitted, dict) and submitted.get("ok"):
-                break
-            time.sleep(1.5)
-        if not (isinstance(submitted, dict) and submitted.get("ok")):
-            error(f"❌ Could not submit BLAST form: {submitted}")
-            return []
 
         rid = None
         if mcp.driver == "obscura":
-            # obscura: native form.submit() is unreliable; submit via a synthetic
-            # click on a temporary submit button inside a listener-free clone
-            clone_js = """(() => {
-              const q = document.querySelector('textarea[name="QUERY"]');
-              const clone = q.form.cloneNode(true);
-              q.form.parentNode.replaceChild(clone, q.form);
-              const cq = clone.querySelector('textarea[name="QUERY"]');
-              cq.value = q.value;
-              const cms = clone.querySelector('select[name="MAX_NUM_SEQ"]');
-              if (cms) cms.value = q.form.querySelector('select[name="MAX_NUM_SEQ"]')?.value ?? '';
-              clone.addEventListener('submit', ev => ev.stopImmediatePropagation(), true);
-              const btn = document.createElement('button');
-              btn.type = 'submit'; btn.id = 'hoodiniNativeSubmit';
-              btn.style.cssText = 'position:fixed;left:0;top:0;width:8px;height:8px;opacity:0.01;z-index:999999';
-              clone.appendChild(btn);
-              btn.click();
-              return 'clicked-js';
-            })()"""
-            for _attempt in range(4):
+            # obscura: native form.submit() and CDP clicks are unreliable in
+            # this engine; submit the serialized form via a same-origin fetch
+            # POST from the page (exactly the fields the form would send) and
+            # read the RID straight from the response's hidden input.
+            fill_only = submit_js.replace("form.submit();", "")
+            try:
+                mcp.evaluate(fill_only)
+            except MCPBrowserError:
+                error("❌ Could not fill the BLAST form")
+                return []
+            post_js = """fetch(document.querySelector('textarea[name="QUERY"]').form.action || location.href, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: new URLSearchParams(new FormData(document.querySelector('textarea[name="QUERY"]').form)).toString()
+              }).then(r => r.text()).then(t => {
+                const m = t.match(/name="RID"[^>]*value="([^"]+)"/);
+                window.__rid = m ? m[1] : 'POSTED-NO-RID';
+              }).catch(e => { window.__rid = 'FETCH-ERROR: ' + e; });"""
+            with contextlib.suppress(MCPBrowserError):
+                mcp.evaluate(post_js, timeout=90)  # the fetch keeps running in the page; the poll reads it
+            for _attempt in range(40):
+                time.sleep(2)
                 try:
-                    mcp.evaluate(clone_js)
+                    val = mcp.evaluate("String(window.__rid)")
                 except MCPBrowserError:
+                    continue
+                if val and val not in ("null", "undefined"):
+                    if val.startswith("FETCH-ERROR") or val == "POSTED-NO-RID":
+                        error(f"❌ BLAST submission failed: {val}")
+                        return []
+                    rid = val
+                    break
+            if not rid:
+                error("❌ Could not find RID (fetch POST did not complete)")
+                return []
+        else:
+            # lightpanda: native form.submit() works; the RID is in the
+            # status page's hidden input
+            submitted = None
+            for _attempt in range(5):
+                try:
+                    submitted = mcp.evaluate(submit_js)
+                except MCPBrowserError:
+                    submitted = None
                     time.sleep(1.5)
                     continue
-                break
-        for _attempt in range(20):
-            time.sleep(3)
-            try:
-                if mcp.driver == "obscura":
-                    # the RID renders in the page nav; extract by regex from
-                    # several views (textContent lags on heavy pages)
-                    for expr in (
-                        "document.documentElement.outerHTML.match(/RID-[A-Z0-9]{8,}/) ? document.documentElement.outerHTML.match(/RID-[A-Z0-9]{8,}/)[0] : ''",
-                        "document.body ? document.body.textContent : ''",
-                    ):
-                        text = mcp.evaluate(expr)
-                        m = re.search(r"RID-([A-Z0-9]{8,})", text or "")
-                        if m:
-                            rid = m.group(1)
-                            break
-                    if not rid and mcp.supports_search:
-                        m = re.search(r"RID-([A-Z0-9]{8,})", mcp.search_text("RID", limit=2))
-                        if m:
-                            rid = m.group(1)
-                else:
+                if isinstance(submitted, dict) and submitted.get("ok"):
+                    break
+                time.sleep(1.5)
+            if not (isinstance(submitted, dict) and submitted.get("ok")):
+                error(f"❌ Could not submit BLAST form: {submitted}")
+                return []
+            for _attempt in range(10):
+                time.sleep(2)
+                try:
                     rid = mcp.evaluate(
                         "document.querySelector('input[name=\"RID\"]')"
                         " ? document.querySelector('input[name=\"RID\"]').value : null"
                     )
-            except MCPBrowserError:
-                continue  # evaluate during navigation can fail transiently
-            if rid:
-                break
+                except MCPBrowserError:
+                    continue  # evaluate during navigation can fail transiently
+                if rid:
+                    break
 
         if not rid:
             error("❌ Could not find RID")
