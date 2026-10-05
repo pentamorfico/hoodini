@@ -11,7 +11,11 @@ import requests
 
 from hoodini.utils.browser_setup import ensure_lightpanda
 from hoodini.utils.logging_utils import error, info, warn
-from hoodini.utils.mcp_browser import MCPBrowserError, MCPBrowserSession
+from hoodini.utils.mcp_browser import (
+    MCPBrowserError,
+    MCPBrowserSession,
+    find_lightpanda_binary,
+)
 from hoodini.utils.ncbi_eutils import efetch
 
 UNIPROT_RE = re.compile(r"^[A-NR-Z][0-9][A-Z0-9]{3}[0-9](?:-[0-9]+)?$")
@@ -86,7 +90,13 @@ def _run_remote_blast(
         info(f"   Using PSI-BLAST (max_targets > {PSI_BLAST_THRESHOLD})")
     info("")
 
-    return _browser_blast(fasta_text, evalue, max_targets, dropdown_value, use_psiblast)
+    hits = _browser_blast(fasta_text, evalue, max_targets, dropdown_value, use_psiblast)
+    if not hits and find_lightpanda_binary():
+        warn("browser driver returned no hits — falling back to lightpanda")
+        hits = _browser_blast(
+            fasta_text, evalue, max_targets, dropdown_value, use_psiblast, driver="lightpanda"
+        )
+    return hits
 
 
 def _build_blast_submit_js(
@@ -155,9 +165,10 @@ def _browser_blast(
     max_targets: int,
     dropdown_value: int,
     use_psiblast: bool,
+    driver: str | None = None,
 ) -> list[str]:
     """Run the browser session for BLAST (obscura or lightpanda over MCP stdio, no port)."""
-    mcp = MCPBrowserSession()
+    mcp = MCPBrowserSession(driver=driver)
     try:
         # Navigate via JS instead of the goto tool: NCBI's page pulls slow
         # third-party resources that can exceed lightpanda's navigation
