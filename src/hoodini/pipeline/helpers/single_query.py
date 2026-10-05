@@ -245,6 +245,7 @@ def _browser_blast(
                 except MCPBrowserError:
                     continue  # evaluate during navigation can fail transiently
                 if rid:
+                    info(f"✓ RID: {rid}")
                     break
 
         if not rid:
