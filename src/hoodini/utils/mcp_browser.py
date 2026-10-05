@@ -1,14 +1,19 @@
-"""Minimal MCP-stdio client for driving lightpanda without opening any port.
+"""Minimal MCP-stdio client for driving headless browsers without ports.
 
-Lightpanda can expose its browser tools over the Model Context Protocol via
-stdin/stdout (``lightpanda mcp``, JSON-RPC 2.0 line protocol). Driving the
-browser this way needs no ``lightpanda serve`` process and no TCP port: the
-browser is a child process we talk to over pipes. That is friendlier to HPC
-nodes with strict network policies and avoids CDP port collisions between
-concurrent hoodini runs.
+Supports two drivers over the same JSON-RPC/MCP line protocol:
+
+- ``obscura`` (preferred: ships on conda-forge), tools ``browser_navigate`` /
+  ``browser_evaluate`` / ``browser_search``.
+- ``lightpanda`` (bioconda package or the official pip wheel), tools ``goto`` /
+  ``evaluate``.
+
+Both are child processes talked to over stdin/stdout pipes: no CDP server and
+no TCP port is involved, which is friendlier to HPC nodes with strict network
+policies and avoids port collisions between concurrent hoodini runs.
 
 This module implements the tiny slice hoodini needs (navigate, evaluate JS,
-wait for a condition) on top of plain subprocess pipes -- no MCP SDK required.
+wait for a condition, search page text) on top of plain subprocess pipes — no
+MCP SDK required.
 """
 
 from __future__ import annotations
@@ -27,12 +32,7 @@ MCP_PROTOCOL_VERSION = "2024-11-05"
 
 
 def find_lightpanda_binary() -> str | None:
-    """Locate a lightpanda binary.
-
-    Resolution order: PATH (conda/pixi/manual installs) first, then the
-    bundled binary of the official ``lightpanda`` pip package, which ships
-    the browser inside its wheels.
-    """
+    """Locate a lightpanda binary: PATH first, then the pip wheel's bundled one."""
     found = shutil.which("lightpanda")
     if found:
         return found
@@ -44,21 +44,53 @@ def find_lightpanda_binary() -> str | None:
         return None
 
 
+def find_browser_binary(preferred: str = "obscura") -> tuple[str, str] | None:
+    """Locate a supported headless browser binary.
+
+    Returns ``(driver, path)`` where driver is ``"obscura"`` or
+    ``"lightpanda"``, trying the preferred browser first and falling back to
+    the other one. Obscura ships on conda-forge; lightpanda on bioconda and
+    as the official ``lightpanda`` pip wheel.
+    """
+    order = [preferred, "lightpanda"] if preferred == "obscura" else ["lightpanda", "obscura"]
+    for driver in order:
+        found = shutil.which(driver)
+        if found:
+            return driver, found
+    for driver in order:
+        if driver == "lightpanda":
+            try:
+                from lightpanda.client import find_binary as pip_find_binary
+
+                return "lightpanda", str(pip_find_binary())
+            except ImportError:
+                continue
+    return None
+
+
 class MCPBrowserError(RuntimeError):
-    """Raised when a lightpanda MCP tool call fails or times out."""
+    """Raised when a browser MCP tool call fails or times out."""
 
 
 class MCPBrowserSession:
-    """Drive lightpanda over stdio (JSON-RPC/MCP line protocol, no TCP port)."""
+    """Drive a headless browser over MCP stdio (JSON-RPC line protocol, no TCP port)."""
 
-    def __init__(self, lp_bin: str | None = None, timeout: float = DEFAULT_TIMEOUT):
+    def __init__(
+        self,
+        binary: str | None = None,
+        driver: str | None = None,
+        timeout: float = DEFAULT_TIMEOUT,
+    ):
         self.timeout = timeout
         self._next_id = 0
-        binary = lp_bin or find_lightpanda_binary()
-        if not binary:
-            raise MCPBrowserError("lightpanda binary not found on PATH")
-        self._proc = subprocess.Popen(  # noqa: S603 -- fixed binary path
-            [binary, "mcp"],
+        resolved = find_browser_binary() if binary is None else ("obscura", binary)
+        if binary is not None:
+            driver = driver or "obscura"
+        if resolved is None:
+            raise MCPBrowserError("no obscura or lightpanda binary found on PATH")
+        self.driver, self.binary = resolved
+        self._proc = subprocess.Popen(  # noqa: S603 -- resolved binary path
+            [self.binary, "mcp"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -101,7 +133,7 @@ class MCPBrowserSession:
             except queue.Empty:
                 continue
             if line is None:
-                raise MCPBrowserError("lightpanda closed stdio unexpectedly")
+                raise MCPBrowserError("browser closed stdio unexpectedly")
             line = line.strip()
             if not line:
                 continue
@@ -136,18 +168,27 @@ class MCPBrowserSession:
         return "\n".join(parts)
 
     def tool(self, name: str, arguments: dict | None = None, timeout: float | None = None) -> str:
-        """Invoke a lightpanda MCP tool and return its text content."""
+        """Invoke a browser MCP tool and return its text content."""
         resp = self._call("tools/call", {"name": name, "arguments": arguments or {}}, timeout)
         result = resp.get("result", {})
         if result.get("isError"):
             raise MCPBrowserError(f"tool '{name}' failed: {self._tool_text(result)}")
         return self._tool_text(result)
 
-    # high-level -----------------------------------------------------------
+    # driver-neutral high level ---------------------------------------------
 
     def goto(self, url: str, timeout: float | None = None) -> None:
         """Navigate the page and wait for it to load."""
-        self.tool("goto", {"url": url}, timeout)
+        self.tool("browser_navigate" if self.driver == "obscura" else "goto", {"url": url}, timeout)
+
+    def evaluate(self, script: str, timeout: float | None = None):
+        """Evaluate JS in the page; return the parsed value when possible."""
+        tool = "browser_evaluate" if self.driver == "obscura" else "evaluate"
+        return self._parse_value(
+            self.tool(
+                tool, {"script" if self.driver == "lightpanda" else "expression": script}, timeout
+            )
+        )
 
     @staticmethod
     def _parse_value(text: str):
@@ -170,9 +211,13 @@ class MCPBrowserSession:
                 continue
         return text
 
-    def evaluate(self, script: str, timeout: float | None = None):
-        """Evaluate JS in the page; return the parsed value when possible."""
-        return self._parse_value(self.tool("evaluate", {"script": script}, timeout))
+    def search_text(self, query: str, limit: int = 3, timeout: float | None = None) -> str:
+        """Search the rendered page text (obscura only)."""
+        return self.tool("browser_search", {"query": query, "limit": limit}, timeout)
+
+    @property
+    def supports_search(self) -> bool:
+        return self.driver == "obscura"
 
     def wait_for_script(self, script: str, timeout: float = 30.0, poll: float = 1.0) -> bool:
         """Poll a JS expression until it returns truthy (or timeout)."""
@@ -202,4 +247,9 @@ class MCPBrowserSession:
         self.close()
 
 
-__all__ = ["MCPBrowserError", "MCPBrowserSession", "find_lightpanda_binary"]
+__all__ = [
+    "MCPBrowserError",
+    "MCPBrowserSession",
+    "find_browser_binary",
+    "find_lightpanda_binary",
+]

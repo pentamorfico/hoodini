@@ -86,7 +86,7 @@ def _run_remote_blast(
         info(f"   Using PSI-BLAST (max_targets > {PSI_BLAST_THRESHOLD})")
     info("")
 
-    return _lightpanda_blast(fasta_text, evalue, max_targets, dropdown_value, use_psiblast)
+    return _browser_blast(fasta_text, evalue, max_targets, dropdown_value, use_psiblast)
 
 
 def _build_blast_submit_js(
@@ -149,14 +149,14 @@ def _build_blast_submit_js(
     """
 
 
-def _lightpanda_blast(
+def _browser_blast(
     fasta_text: str,
     evalue: float,
     max_targets: int,
     dropdown_value: int,
     use_psiblast: bool,
 ) -> list[str]:
-    """Run the browser session for BLAST (lightpanda over MCP stdio, no port)."""
+    """Run the browser session for BLAST (obscura or lightpanda over MCP stdio, no port)."""
     mcp = MCPBrowserSession()
     try:
         # Navigate via JS instead of the goto tool: NCBI's page pulls slow
@@ -188,13 +188,56 @@ def _lightpanda_blast(
             return []
 
         rid = None
-        for _attempt in range(10):
-            time.sleep(2)
+        if mcp.driver == "obscura":
+            # obscura: native form.submit() is unreliable; submit via a synthetic
+            # click on a temporary submit button inside a listener-free clone
+            clone_js = """(() => {
+              const q = document.querySelector('textarea[name="QUERY"]');
+              const clone = q.form.cloneNode(true);
+              q.form.parentNode.replaceChild(clone, q.form);
+              const cq = clone.querySelector('textarea[name="QUERY"]');
+              cq.value = q.value;
+              const cms = clone.querySelector('select[name="MAX_NUM_SEQ"]');
+              if (cms) cms.value = q.form.querySelector('select[name="MAX_NUM_SEQ"]')?.value ?? '';
+              clone.addEventListener('submit', ev => ev.stopImmediatePropagation(), true);
+              const btn = document.createElement('button');
+              btn.type = 'submit'; btn.id = 'hoodiniNativeSubmit';
+              btn.style.cssText = 'position:fixed;left:0;top:0;width:8px;height:8px;opacity:0.01;z-index:999999';
+              clone.appendChild(btn);
+              btn.click();
+              return 'clicked-js';
+            })()"""
+            for _attempt in range(4):
+                try:
+                    mcp.evaluate(clone_js)
+                except MCPBrowserError:
+                    time.sleep(1.5)
+                    continue
+                break
+        for _attempt in range(20):
+            time.sleep(3)
             try:
-                rid = mcp.evaluate(
-                    "document.querySelector('input[name=\"RID\"]')"
-                    " ? document.querySelector('input[name=\"RID\"]').value : null"
-                )
+                if mcp.driver == "obscura":
+                    # the RID renders in the page nav; extract by regex from
+                    # several views (textContent lags on heavy pages)
+                    for expr in (
+                        "document.documentElement.outerHTML.match(/RID-[A-Z0-9]{8,}/) ? document.documentElement.outerHTML.match(/RID-[A-Z0-9]{8,}/)[0] : ''",
+                        "document.body ? document.body.textContent : ''",
+                    ):
+                        text = mcp.evaluate(expr)
+                        m = re.search(r"RID-([A-Z0-9]{8,})", text or "")
+                        if m:
+                            rid = m.group(1)
+                            break
+                    if not rid and mcp.supports_search:
+                        m = re.search(r"RID-([A-Z0-9]{8,})", mcp.search_text("RID", limit=2))
+                        if m:
+                            rid = m.group(1)
+                else:
+                    rid = mcp.evaluate(
+                        "document.querySelector('input[name=\"RID\"]')"
+                        " ? document.querySelector('input[name=\"RID\"]').value : null"
+                    )
             except MCPBrowserError:
                 continue  # evaluate during navigation can fail transiently
             if rid:
