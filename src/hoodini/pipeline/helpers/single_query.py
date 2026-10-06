@@ -202,9 +202,7 @@ def _browser_blast(
                 window.__rid = m ? m[1] : 'POSTED-NO-RID';
               }).catch(e => { window.__rid = 'FETCH-ERROR: ' + e; });"""
             with contextlib.suppress(MCPBrowserError):
-                mcp.evaluate(
-                    post_js, timeout=90
-                )  # the fetch keeps running in the page; the poll reads it
+                mcp.evaluate(post_js, timeout=90)  # the fetch keeps running in the page; the poll reads it
             for _attempt in range(40):
                 time.sleep(2)
                 try:
@@ -262,18 +260,9 @@ def _browser_blast(
         f"https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Get&RID={rid}&FORMAT_OBJECT=SearchInfo"
     )
 
-
-    poll_start = time.time()
-    for _i in range(1800):
-        try:
-            resp = requests.get(status_url, timeout=30)
-            text = resp.text
-        except requests.exceptions.RequestException:
-            if time.time() - poll_start > 1800:
-                error("❌ BLAST status poll timed out (network errors)")
-                return []
-            time.sleep(2)
-            continue
+    for _i in range(600):
+        resp = requests.get(status_url)
+        text = resp.text
 
         if "Status=READY" in text and "ThereAreHits=yes" in text:
             break
