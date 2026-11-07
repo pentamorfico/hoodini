@@ -85,7 +85,7 @@ def _tolerant_select_sql(
     fails with a BinderException (NCBI's sequence_report format is actively
     migrating; gcCount vanished from the 2026-09 delta).
     """
-    present = {row[0]: row[1] for row in con.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()}
+    present = {row[0]: row[1] for row in con.sql(f"DESCRIBE SELECT * FROM {source}").fetchall()}
     missing = [c for c in columns if c not in present]
     kinds = expected_types or {}
     select_parts = [
@@ -118,13 +118,13 @@ def main() -> int:
     # union_by_name=True: local part files have accumulated schema drift over
     # time (some lack gcPercent/sequenceName/sortOrder/unlocalizedCount), so
     # match columns by name instead of position across the glob.
-    local_count = con.execute(
+    local_count = con.sql(
         f"SELECT COUNT(DISTINCT assemblyAccession) "
         f"FROM read_parquet('{LOCAL_PARTS_GLOB}', union_by_name=True)"
-    ).fetchone()[0]
-    remote_count = con.execute(
+    ).fetchall()[0][0]
+    remote_count = con.sql(
         f"SELECT COUNT(DISTINCT assemblyAccession) FROM read_parquet('{REMOTE_URL}')"
-    ).fetchone()[0]
+    ).fetchall()[0][0]
     print(f"Local delta assemblies: {local_count:,}")
     print(f"Remote published assemblies: {remote_count:,}")
 
@@ -134,7 +134,7 @@ def main() -> int:
     # Types come from the currently published parquet: it is the schema
     # contract, so NULLs injected on either side match its column types.
     remote_types = {
-        row[0]: row[1] for row in con.execute(f"DESCRIBE SELECT * FROM {remote_source}").fetchall()
+        row[0]: row[1] for row in con.sql(f"DESCRIBE SELECT * FROM {remote_source}").fetchall()
     }
 
     remote_sql, remote_missing = _tolerant_select_sql(
@@ -173,9 +173,9 @@ def main() -> int:
             """
         )
 
-        merged_count = con.execute(
+        merged_count = con.sql(
             f"SELECT COUNT(*), COUNT(DISTINCT assemblyAccession) FROM read_parquet('{output_path}')"
-        ).fetchone()
+        ).fetchall()[0]
         size_mb = output_path.stat().st_size / (1024 * 1024)
         print(f"Merged parquet: {merged_count[0]:,} rows, {merged_count[1]:,} assemblies")
         print(f"Merged file size: {size_mb:.1f} MiB at {output_path}")
