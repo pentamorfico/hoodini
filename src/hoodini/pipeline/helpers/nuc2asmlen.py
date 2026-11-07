@@ -45,7 +45,7 @@ def run_nuc2asmlen(accessions):
             con.register("lookup", pl.DataFrame({"nuc_id": query_accessions}))
 
             # Query with efficient semi-join
-            matches = con.execute(
+            matches = con.sql(
                 """
                 SELECT
                     genbankAccession,
@@ -61,14 +61,14 @@ def run_nuc2asmlen(accessions):
     except Exception:
         # Fallback to Polars if DuckDB fails
         df_lazy = scan_contig_table(parquet_path)
-        matches = (
-            df_lazy.filter(
-                pl.col("genbankAccession").is_in(query_accessions)
-                | pl.col("refseqAccession").is_in(query_accessions)
-            )
-            .select(["genbankAccession", "refseqAccession", "assemblyAccession", "length"])
-            .collect(streaming=True)
-        )
+        matches_lf = df_lazy.filter(
+            pl.col("genbankAccession").is_in(query_accessions)
+            | pl.col("refseqAccession").is_in(query_accessions)
+        ).select(["genbankAccession", "refseqAccession", "assemblyAccession", "length"])
+        try:
+            matches = matches_lf.collect(engine="streaming")
+        except TypeError:
+            matches = matches_lf.collect(streaming=True)
 
     ref_matches = matches.filter(
         pl.col("refseqAccession").is_in(query_accessions)

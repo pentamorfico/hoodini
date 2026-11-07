@@ -359,8 +359,21 @@ def write_viz_outputs(
 
         if "cluster" not in prots.columns:
             prots = prots.with_columns(pl.lit(None).alias("cluster"))
-        else:
+        elif prots.schema.get("cluster") in (
+            pl.Int8,
+            pl.Int16,
+            pl.Int32,
+            pl.Int64,
+            pl.UInt8,
+            pl.UInt16,
+            pl.UInt32,
+            pl.UInt64,
+            pl.Float32,
+            pl.Float64,
+        ):
             prots = prots.with_columns(pl.col("cluster").round().cast(pl.Int64))
+        else:
+            prots = prots.with_columns(pl.col("cluster").cast(pl.Utf8))
 
         base_cols = [
             "id",

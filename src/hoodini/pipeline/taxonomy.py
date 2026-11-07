@@ -833,7 +833,7 @@ def _make_foldmason_tree(records, all_prot, output_dir, threads):
 
                 # Reverse lookup: NCBI protein_id → UniProt accession
                 # Match against RefSeq and EMBL-CDS columns
-                result = con.execute(
+                result = con.sql(
                     f"""
                     SELECT l.ncbi_id, m."UniprotKB-AC"
                     FROM lookup_ids l

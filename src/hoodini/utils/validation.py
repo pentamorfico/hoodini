@@ -601,7 +601,7 @@ def uniprot2ncbi(df: pl.DataFrame) -> pl.DataFrame:
     # rows one at a time via executemany, which takes minutes for large lists.
     con.register("lookup_ids", pl.DataFrame({"uniprot_ac": to_map}))
 
-    idmap = con.execute(
+    idmap = con.sql(
         f"""
         SELECT
             m."UniprotKB-AC",

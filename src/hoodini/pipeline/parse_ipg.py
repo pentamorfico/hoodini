@@ -21,9 +21,9 @@ def safe_collect(lf: pl.LazyFrame) -> PlDF:
     try:
         return lf.collect(engine="streaming")
     except (TypeError, AttributeError):
-        return lf.collect(streaming=False)
+        return lf.collect()
     except Exception:
-        return lf.collect(streaming=False)
+        return lf.collect()
 
 
 def run_ipg(records_df: PlDF, *, cand_mode: str) -> PlDF:
@@ -173,7 +173,7 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
         # inserting rows one at a time, which takes minutes for large lists.
         con.register("asm_lookup", pl.DataFrame({"assembly_id": assemblies_stripped}))
 
-        ts = con.execute(
+        ts = con.sql(
             f"""
             SELECT d.*
             FROM read_parquet('{dive_path}') d
@@ -202,7 +202,7 @@ def _fetch_ipg_data(df: PlDF, cand_mode: str) -> PlDF:
         con.execute('SET memory_limit = "4GB"')
         con.register("asm_lookup2", pl.DataFrame({"assembly_accession": assemblies}))
 
-        summary = con.execute(
+        summary = con.sql(
             f"""
             SELECT 
                 assembly_accession,
@@ -327,7 +327,7 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
 
             register_contig_table(con, contig_path)
             # Query parquet with semi-join - DuckDB handles this efficiently
-            result_df = con.execute(
+            result_df = con.sql(
                 """
                 SELECT nucleotide_id, assembly_id, sequence_length FROM (
                     SELECT genbankAccession as nucleotide_id,
@@ -379,7 +379,7 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
             con.execute('SET memory_limit = "4GB"')
             con.register("asm_lookup", pl.DataFrame({"assembly_id": asm_list}))
 
-            asm_meta = con.execute(
+            asm_meta = con.sql(
                 f"""
                 SELECT 
                     assembly_accession as assembly_id,
@@ -455,7 +455,7 @@ def _fetch_nucleotide_data(df: PlDF) -> PlDF:
                         con.execute('SET memory_limit = "4GB"')
                         con.register("new_asm_lookup", pl.DataFrame({"assembly_id": new_asm_list}))
 
-                        summary2 = con.execute(
+                        summary2 = con.sql(
                             f"""
                             SELECT 
                                 assembly_accession as assembly_id,

@@ -84,6 +84,7 @@ profile = "black"
 line_length = 100
 combine_as_imports = true
 known_first_party = ["hoodini"]
+skip_glob = [".pixi/*"]
 
 [tool.ruff]
 line-length = 100

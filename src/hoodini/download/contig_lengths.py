@@ -133,7 +133,7 @@ def get_missing_contigs_from_summary(
                 # Query existing contig assemblies and do anti-join
                 contig_glob = str(CONTIG_LENGTHS_DIR / "*.parquet")
                 register_contig_table(con, contig_glob)
-                missing_df = con.execute(
+                missing_df = con.sql(
                     f"""
                     WITH summary AS ({summary_query}),
                     existing AS (
@@ -148,7 +148,7 @@ def get_missing_contigs_from_summary(
                 ).pl()
             else:
                 console.log("No existing contig_lengths found, will download all")
-                missing_df = con.execute(summary_query).pl()
+                missing_df = con.sql(summary_query).pl()
 
     except Exception as e:
         console.log(f"⚠️  DuckDB failed, falling back to Polars streaming: {e}")
@@ -181,7 +181,10 @@ def get_missing_contigs_from_summary(
             missing_lf = summary_lf.join(contig_lf, on="assembly_accession", how="anti")
         else:
             missing_lf = summary_lf
-        missing_df = missing_lf.collect(streaming=True)
+        try:
+            missing_df = missing_lf.collect(engine="streaming")
+        except TypeError:
+            missing_df = missing_lf.collect(streaming=True)
 
     console.log(f"❗ {missing_df.height:,} assemblies missing contig lengths.")
     console.log(f"latest_mtime: {latest_mtime}")
@@ -438,7 +441,7 @@ def download_contig_lengths(
         con = duckdb.connect(":memory:")
         con.execute('SET memory_limit = "4GB"')
         groups_str = ", ".join(f"'{g}'" for g in DEFAULT_GROUPS)
-        candidate_df = con.execute(
+        candidate_df = con.sql(
             f"""
             SELECT DISTINCT CAST(assembly_accession AS VARCHAR) as assembly_accession
             FROM read_parquet('{str(ASSEMBLY_SUMMARY)}')
@@ -492,7 +495,7 @@ def download_contig_lengths(
                     con.register("missing_asm", missing_df)
 
                     # Filter: keep if date is null OR date > remote_date
-                    missing_df = con.execute(
+                    missing_df = con.sql(
                         f"""
                         SELECT DISTINCT m.assembly_accession
                         FROM missing_asm m

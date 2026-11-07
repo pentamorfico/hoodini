@@ -120,7 +120,7 @@ def _load_local_assembly_map() -> dict:
 
         con = duckdb.connect(":memory:")
         con.execute('SET memory_limit = "4GB"')
-        df = con.execute(
+        df = con.sql(
             f"""
             SELECT 
                 CAST(assembly_accession AS VARCHAR) as assembly_accession,

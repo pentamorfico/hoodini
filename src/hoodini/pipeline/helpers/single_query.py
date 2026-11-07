@@ -202,7 +202,9 @@ def _browser_blast(
                 window.__rid = m ? m[1] : 'POSTED-NO-RID';
               }).catch(e => { window.__rid = 'FETCH-ERROR: ' + e; });"""
             with contextlib.suppress(MCPBrowserError):
-                mcp.evaluate(post_js, timeout=90)  # the fetch keeps running in the page; the poll reads it
+                mcp.evaluate(
+                    post_js, timeout=90
+                )  # the fetch keeps running in the page; the poll reads it
             for _attempt in range(40):
                 time.sleep(2)
                 try:

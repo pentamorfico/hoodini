@@ -85,15 +85,11 @@ def _tolerant_select_sql(
     fails with a BinderException (NCBI's sequence_report format is actively
     migrating; gcCount vanished from the 2026-09 delta).
     """
-    present = {
-        row[0]: row[1]
-        for row in con.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()
-    }
+    present = {row[0]: row[1] for row in con.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()}
     missing = [c for c in columns if c not in present]
     kinds = expected_types or {}
     select_parts = [
-        c if c in present else f"CAST(NULL AS {kinds.get(c, 'VARCHAR')}) AS {c}"
-        for c in columns
+        c if c in present else f"CAST(NULL AS {kinds.get(c, 'VARCHAR')}) AS {c}" for c in columns
     ]
     return ", ".join(select_parts), missing
 
@@ -138,11 +134,12 @@ def main() -> int:
     # Types come from the currently published parquet: it is the schema
     # contract, so NULLs injected on either side match its column types.
     remote_types = {
-        row[0]: row[1]
-        for row in con.execute(f"DESCRIBE SELECT * FROM {remote_source}").fetchall()
+        row[0]: row[1] for row in con.execute(f"DESCRIBE SELECT * FROM {remote_source}").fetchall()
     }
 
-    remote_sql, remote_missing = _tolerant_select_sql(con, remote_source, REMOTE_COLUMNS, remote_types)
+    remote_sql, remote_missing = _tolerant_select_sql(
+        con, remote_source, REMOTE_COLUMNS, remote_types
+    )
     if remote_missing:
         print(f"⚠️  Parquet publicado sin columnas {remote_missing}; rellenando con NULL.")
     local_sql, local_missing = _tolerant_select_sql(con, local_source, REMOTE_COLUMNS, remote_types)

@@ -138,7 +138,7 @@ def run_emapper(all_prots: pl.DataFrame, output: str | Path, num_threads: int = 
         con.register("lookup", pl.DataFrame({"id": prot_ids}, schema={"id": pl.Int64}))
 
         prot_cols_sql = ", ".join(f'"{c}"' for c in prot_cols)
-        annotated = con.execute(
+        annotated = con.sql(
             f"""
             WITH filtered_prots AS (
                 SELECT id AS prot_id, name, ogs, pname, {prot_cols_sql}
