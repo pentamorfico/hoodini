@@ -609,70 +609,68 @@ def run_proteome_similarity(
             all_neigh_pl is not None
             and not all_neigh_pl.is_empty()
             and "target_nuc" in set(all_prots_pl.columns)
+            and {"temp_seqid", "seqid", "unique_id"}.intersection(all_neigh_pl.columns)
         ):
-            if {"temp_seqid", "seqid", "unique_id"}.intersection(all_neigh_pl.columns):
-                an_pl = all_neigh_pl.select(
-                    [c for c in ["temp_seqid", "seqid", "unique_id"] if c in all_neigh_pl.columns]
+            an_pl = all_neigh_pl.select(
+                [c for c in ["temp_seqid", "seqid", "unique_id"] if c in all_neigh_pl.columns]
+            )
+            mapping = {}
+
+            if "temp_seqid" in an_pl.columns:
+                temp_map = (
+                    an_pl.select(
+                        [
+                            pl.col("temp_seqid").cast(pl.Utf8).alias("k"),
+                            pl.col("unique_id").cast(pl.Utf8).alias("v"),
+                        ]
+                    )
+                    .drop_nulls()
+                    .unique(subset=["k", "v"])
                 )
-                mapping = {}
+                mapping.update(dict(zip(temp_map["k"].to_list(), temp_map["v"].to_list())))
 
-                if "temp_seqid" in an_pl.columns:
-                    temp_map = (
-                        an_pl.select(
-                            [
-                                pl.col("temp_seqid").cast(pl.Utf8).alias("k"),
-                                pl.col("unique_id").cast(pl.Utf8).alias("v"),
-                            ]
-                        )
-                        .drop_nulls()
-                        .unique(subset=["k", "v"])
+            if "seqid" in an_pl.columns:
+                seq_group = (
+                    an_pl.filter(pl.col("seqid").is_not_null() & pl.col("unique_id").is_not_null())
+                    .group_by("seqid")
+                    .agg(
+                        [
+                            pl.col("unique_id").n_unique().alias("n"),
+                            pl.col("unique_id").first().cast(pl.Utf8).alias("uid_first"),
+                        ]
                     )
-                    mapping.update(dict(zip(temp_map["k"].to_list(), temp_map["v"].to_list())))
+                    .filter(pl.col("n") == 1)
+                    .select(
+                        [
+                            pl.col("seqid").cast(pl.Utf8).alias("k"),
+                            pl.col("uid_first").alias("v"),
+                        ]
+                    )
+                )
+                mapping.update(dict(zip(seq_group["k"].to_list(), seq_group["v"].to_list())))
 
-                if "seqid" in an_pl.columns:
-                    seq_group = (
-                        an_pl.filter(
-                            pl.col("seqid").is_not_null() & pl.col("unique_id").is_not_null()
-                        )
-                        .group_by("seqid")
-                        .agg(
-                            [
-                                pl.col("unique_id").n_unique().alias("n"),
-                                pl.col("unique_id").first().cast(pl.Utf8).alias("uid_first"),
-                            ]
-                        )
-                        .filter(pl.col("n") == 1)
-                        .select(
-                            [
-                                pl.col("seqid").cast(pl.Utf8).alias("k"),
-                                pl.col("uid_first").alias("v"),
-                            ]
-                        )
+            if mapping:
+                console.log(
+                    f"run_proteome_similarity: mapping target_nuc -> unique_id for {len(mapping)} seq keys (unambiguous mapping)"
+                )
+                all_prots_pl = (
+                    all_prots_pl.with_columns(
+                        pl.col("target_nuc")
+                        .cast(pl.Utf8)
+                        .replace(mapping, default=None)
+                        .alias("target_nuc_mapped")
                     )
-                    mapping.update(dict(zip(seq_group["k"].to_list(), seq_group["v"].to_list())))
-
-                if mapping:
-                    console.log(
-                        f"run_proteome_similarity: mapping target_nuc -> unique_id for {len(mapping)} seq keys (unambiguous mapping)"
+                    .with_columns(
+                        pl.when(pl.col("target_nuc_mapped").is_not_null())
+                        .then(pl.col("target_nuc_mapped"))
+                        .otherwise(pl.col("target_nuc"))
+                        .alias("target_nuc")
                     )
-                    all_prots_pl = (
-                        all_prots_pl.with_columns(
-                            pl.col("target_nuc")
-                            .cast(pl.Utf8)
-                            .replace(mapping, default=None)
-                            .alias("target_nuc_mapped")
-                        )
-                        .with_columns(
-                            pl.when(pl.col("target_nuc_mapped").is_not_null())
-                            .then(pl.col("target_nuc_mapped"))
-                            .otherwise(pl.col("target_nuc"))
-                            .alias("target_nuc")
-                        )
-                        .drop("target_nuc_mapped")
-                    )
-                    console.log(
-                        f"run_proteome_similarity: after mapping, unique target_nuc values={all_prots_pl.select('target_nuc').n_unique()}"
-                    )
+                    .drop("target_nuc_mapped")
+                )
+                console.log(
+                    f"run_proteome_similarity: after mapping, unique target_nuc values={all_prots_pl.select('target_nuc').n_unique()}"
+                )
     except Exception as e:
         console.log(f"run_proteome_similarity: neighborhood remapping skipped due to error: {e}")
 
