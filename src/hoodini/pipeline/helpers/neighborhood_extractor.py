@@ -91,8 +91,8 @@ def parse_gbff(gbff_path: str, nucleotide_id: str | None = None) -> tuple[pl.Dat
 
         features_df = features_df.drop("attributes")
 
-        features_df = features_df.with_row_count("_join_idx")
-        attrs_df = attrs_df.with_row_count("_join_idx")
+        features_df = features_df.with_row_index("_join_idx")
+        attrs_df = attrs_df.with_row_index("_join_idx")
 
         features_df = features_df.join(attrs_df, on="_join_idx", how="inner")
         features_df = features_df.drop("_join_idx")
@@ -254,7 +254,7 @@ def compute_window(
                 end_win = min(end_win, sequence_length)
 
         elif mode == "win_genes":
-            indexed = features_df.with_row_count("_idx")
+            indexed = features_df.with_row_index("_idx")
             prot_idx = indexed.filter(pl.col("protein_id") == protein_id).row(0, named=True)["_idx"]
             slice_start = max(0, prot_idx - window)
             slice_end = min(indexed.height, prot_idx + window + 1)
@@ -283,7 +283,7 @@ def compute_window(
                     end_win = min(end_win, sequence_length)
 
             elif mode == "win_genes":
-                indexed = features_df.with_row_count("_idx")
+                indexed = features_df.with_row_index("_idx")
                 in_range = indexed.filter((pl.col("start") >= start) & (pl.col("end") <= end))
                 if in_range.height == 0:
                     raise NeighborhoodExtractionError("No features in specified nucleotide range")

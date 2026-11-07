@@ -446,7 +446,7 @@ def _make_fast_phylo_tree(records, all_prots, output_dir, nj_algorithm, threads:
 def _make_taxonomic_tree(records):
     from hoodini.utils.logging_utils import error, warn
 
-    valid = records.filter(pl.col("failed").is_null()).with_row_count("_idx")
+    valid = records.filter(pl.col("failed").is_null()).with_row_index("_idx")
     uids = valid["unique_id"].to_list()
     n = len(uids)
 

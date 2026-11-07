@@ -356,7 +356,7 @@ def run_assembly_parser(
     def _extract_neighborhoods(
         df: pl.DataFrame,
     ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, list]:
-        df = df.with_row_count("unique_id").with_columns(pl.col("unique_id").cast(pl.Utf8))
+        df = df.with_row_index("unique_id").with_columns(pl.col("unique_id").cast(pl.Utf8))
         for col in ("start", "end", "strand"):
             if col not in df.columns:
                 df = df.with_columns(pl.lit(None).alias(col))

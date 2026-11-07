@@ -37,7 +37,7 @@ def run_defensefinder(all_gff, all_prots, output):
                 "id",
                 "sequence",
             ]
-        ).with_row_count("temp_index")
+        ).with_row_index("temp_index")
 
         temp_gff = temp_gff.with_columns(
             (pl.col("seqid") + "_" + pl.col("temp_index").cast(pl.Utf8)).alias("fasta_id")
